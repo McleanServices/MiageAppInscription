@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "inscriptions",
-    "slug": "inscriptions",
+    "name": "MiageConnect",
+    "slug": "MiageConnect",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "inscriptions",
+    "scheme": "MiageConnect",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mcleantyrece.inscriptions"
+      "bundleIdentifier": "com.mcleantyrece.MiageConnect"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.mcleantyrece.inscriptions"
+      "package": "com.mcleantyrece.MiageConnect"
     },
     "web": {
       "bundler": "metro",

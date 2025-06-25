@@ -7,8 +7,11 @@ export function RootNavigator() {
   return (
     <Stack>
       <Stack.Protected guard={!session}>
-        <Stack.Screen name="login" />
-        <Stack.Screen name="register" />
+        <Stack.Screen
+          name="login"
+          options={{ headerShown: false, headerBackVisible: false }}
+        />
+        <Stack.Screen name="register" options={{ headerShown: false, headerBackVisible: false }} />
       </Stack.Protected>
 
       <Stack.Protected guard={!!session}>
@@ -17,7 +20,6 @@ export function RootNavigator() {
           options={{ headerShown: false }}
         />
       </Stack.Protected>
-      <Stack.Screen name="not-found" options={{ title: 'Oops!' }} />
     </Stack>
   );
 }

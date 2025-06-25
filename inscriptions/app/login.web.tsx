@@ -3,18 +3,13 @@ import { router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView, // added import
+  View
 } from "react-native";
 import { useSession } from '../Session/ctx';
-import { Link } from 'expo-router';
-import { Image } from 'expo-image'; // <-- added import
 
 
 // Keep the splash screen visible while we fetch resources
@@ -89,58 +84,32 @@ export default function Index() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
-    >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.centeredView}>
-          {/* Four images above the card */}
-          <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
-            <Image
-              source={require('../assets/images/miage-logo.png')}
-              style={{ width: 80, height: 80, marginHorizontal: 4 }}
-              contentFit="contain"
-            />
-            <Image
-              source={require('../assets/images/miage-logo.png')}
-              style={{ width: 80, height: 80, marginHorizontal: 4 }}
-              contentFit="contain"
-            />
-            <Image
-              source={require('../assets/images/miage-logo.png')}
-              style={{ width: 80, height: 80, marginHorizontal: 4 }}
-              contentFit="contain"
-            />
-            <Image
-              source={require('../assets/images/miage-logo.png')}
-              style={{ width: 80, height: 80, marginHorizontal: 4 }}
-              contentFit="contain"
-            />
-          </View>
-          {/* Card */}
+    <View style={styles.outerContainer}>
+      <View style={styles.innerContainer}>
+        {/* Left Section: Welcome and Register */}
+        <View style={styles.leftSection}>
+          <Text style={styles.welcomeTitle}>BIENVENUE!</Text>
+          <View style={styles.welcomeUnderline} />
+          <Text style={styles.welcomeSubtitle}>Vous n&apos;êtes pas encore un compte ?</Text>
+          <TouchableOpacity style={styles.registerButton} onPress={() => router.replace('/register')}>
+            <Text style={styles.registerButtonText}>Creer un compte </Text>
+          </TouchableOpacity>
+        </View>
+        {/* Right Section: Login Card */}
+        <View style={styles.rightSection}>
           <View style={styles.card}>
-            {/* Title */}
-            <Text style={styles.title}>
-              CONNEXION
-            </Text>
+            <Text style={styles.title}>SE CONNECTER</Text>
             <View style={styles.titleUnderline} />
-            {/* Error message (fixed height to prevent bounce) */}
             <View style={styles.errorBoxWrapper}>
               {error ? (
                 <View style={styles.errorBox}>
-                  <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
-                    {error}
-                  </Text>
+                  <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">{error}</Text>
                 </View>
               ) : null}
             </View>
-
-            {/* Login input */}
             <View style={styles.inputContainer}>
               <TextInput
-                placeholder="LOGIN"
+                placeholder="Email"
                 style={styles.input}
                 placeholderTextColor="#555"
                 value={email}
@@ -150,11 +119,9 @@ export default function Index() {
               />
               <Ionicons name="person-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
             </View>
-
-            {/* Password input */}
             <View style={styles.inputContainer}>
               <TextInput
-                placeholder="MOT DE PASSE"
+                placeholder="Mot de passe"
                 style={styles.input}
                 placeholderTextColor="#555"
                 secureTextEntry
@@ -163,57 +130,91 @@ export default function Index() {
               />
               <Ionicons name="lock-closed-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
             </View>
-
-            {/* Forgot password - right aligned */}
             <View style={styles.forgotPasswordContainer}>
               <TouchableOpacity>
                 <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Login button */}
-            <TouchableOpacity
-              style={styles.loginButton}
-              onPress={handleLogin}
-              disabled={loading}
-            >
-              <Text style={styles.loginButtonText}>
-                {loading ? 'Connexion...' : 'SE CONNECTER'}
-              </Text>
+            <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
+              <Text style={styles.loginButtonText}>{loading ? 'Connexion...' : 'CONNEXION'}</Text>
             </TouchableOpacity>
-
-            {/* Register link */}
-            <Text style={styles.registerLink}>
-              pas un compte?{" "}
-              <Link href="/register" style={styles.registerLinkUnderline}>
-                créer un compte
-              </Link>
-            </Text>
-            <TouchableOpacity
-            style={styles.testButton}
-            onPress={() => router.replace('/home')}
-          >
-            <Text style={styles.testButtonText}>Test Accueil</Text>
-          </TouchableOpacity>
           </View>
-          {/* Shadow background just under the card */}
-          <View style={styles.shadowBackground} />
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: '#174B7A',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  centeredView: {
+  innerContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#0A2342',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 8, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+    width: '95%',
+    maxWidth: 1100,
+    minHeight: 650,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leftSection: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    minHeight: 600, // add a fixed minHeight to stabilize vertical position
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    padding: 48,
+    minWidth: 350,
+  },
+  welcomeTitle: {
+    color: '#fff',
+    fontSize: 48,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    letterSpacing: 1,
+  },
+  welcomeUnderline: {
+    width: 80,
+    height: 5,
+    backgroundColor: '#3CA1D8',
+    marginBottom: 24,
+    borderRadius: 2,
+  },
+  welcomeSubtitle: {
+    color: '#fff',
+    fontSize: 20,
+    marginBottom: 24,
+    fontWeight: '500',
+  },
+  registerButton: {
+    backgroundColor: '#E15A2D',
+    borderRadius: 5,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  registerButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+    letterSpacing: 0.5,
+  },
+  rightSection: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 350,
+    padding: 48,
   },
   card: {
     backgroundColor: "#1686B0",
@@ -308,38 +309,4 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 16,
   },
-  registerLink: {
-    color: "#fff",
-    fontSize: 15,
-    marginTop: 10,
-    opacity: 0.85,
-    textAlign: "center",
-  },
-  registerLinkUnderline: {
-    textDecorationLine: "underline",
-    color: "#fff",
-  },
-  shadowBackground: {
-    width: "90%",
-    maxWidth: 600,
-    height: 150,
-    backgroundColor: "#0A2342",
-    borderBottomLeftRadius: 60,
-    borderBottomRightRadius: 60,
-    alignSelf: "center",
-    marginTop: -60,
-    zIndex: 0,
-  },
-  testButton: {
-    marginTop: 10,
-    backgroundColor: "#4CAF50",
-    borderRadius: 5,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  testButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    textAlign: "center",
-  }
 });
