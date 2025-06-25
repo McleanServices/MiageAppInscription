@@ -115,7 +115,7 @@ export default function Index() {
                 etape.cta.label === "Remplir la fiche de renseignement" ? (
                   <TouchableOpacity
                     style={styles.etapeCtaBtn}
-                    onPress={() => router.push("/Formulaire/fiche")}
+                    onPress={() => router.push("/file")}
                   >
                     <Text style={styles.etapeCtaText}>{etape.cta.label}</Text>
                   </TouchableOpacity>

@@ -90,7 +90,7 @@ export default function Register() {
     }
 
     try {
-      const response = await fetch('https://zq2s6rh4-8080.use.devtunnels.ms/api/sign-up', {
+      const response = await fetch('https://f8jhmf3m-8080.use2.devtunnels.ms/api/sign-up', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,8 +109,7 @@ export default function Register() {
         return;
       }
       // Registration successful, optionally auto-login or redirect
-      signIn();
-      router.replace('/');
+      router.replace('/login');
     } catch (err) {
       setError('Impossible de se connecter au serveur. Veuillez réessayer plus tard.');
       setLoading(false);
@@ -257,9 +256,11 @@ export default function Register() {
             </TouchableOpacity>
 
             {/* Register link */}
-            <Text style={styles.registerLink}>
+            <TouchableOpacity onPress={() => router.push('/login')}>
+              <Text style={styles.registerLink}>
               pas un compte? <Text style={styles.registerLinkUnderline}>inscrire vous</Text>
-            </Text>
+              </Text>
+            </TouchableOpacity>
           </View>
           {/* Shadow background just under the card */}
           <View style={styles.shadowBackground} />

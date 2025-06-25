@@ -72,25 +72,15 @@ export default function Index() {
   const handleLogin = async () => {
     setError(null);
     setLoading(true);
-    try {
-      const response = await fetch('https://zq2s6rh4-8080.use.devtunnels.ms/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, mot_de_passe: motDePasse }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.message || 'Erreur inconnue');
-        setLoading(false);
-        return;
-      }
-      // Optionally: store user info from data.utilisateur
-      signIn();
+    
+    const result = await signIn(email, motDePasse);
+    
+    if (result.success) {
       router.replace('/');
-    } catch (err) {
-      setError('Impossible de se connecter au serveur. Veuillez réessayer plus tard.');
-      setLoading(false);
+    } else {
+      setError(result.error || 'Erreur inconnue');
     }
+    
     setLoading(false);
   };
 
@@ -199,6 +189,12 @@ export default function Index() {
                 créer un compte
               </Link>
             </Text>
+            <TouchableOpacity
+            style={styles.testButton}
+            onPress={() => router.replace('/home')}
+          >
+            <Text style={styles.testButtonText}>Test Accueil</Text>
+          </TouchableOpacity>
           </View>
           {/* Shadow background just under the card */}
           <View style={styles.shadowBackground} />
@@ -334,4 +330,16 @@ const styles = StyleSheet.create({
     marginTop: -60,
     zIndex: 0,
   },
+  testButton: {
+    marginTop: 10,
+    backgroundColor: "#4CAF50",
+    borderRadius: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  testButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    textAlign: "center",
+  }
 });
