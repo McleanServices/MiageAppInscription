@@ -1,5 +1,7 @@
 import { Stack } from 'expo-router';
 import { useSession } from '../Session/ctx';
+import { Platform } from 'react-native';
+
 
 export function RootNavigator() {
   const { session } = useSession();
@@ -14,10 +16,22 @@ export function RootNavigator() {
         <Stack.Screen name="register" options={{ headerShown: false, headerBackVisible: false }} />
       </Stack.Protected>
 
-      <Stack.Protected guard={!!session}>
+      <Stack.Protected guard={session}>
         <Stack.Screen
           name="(app)"
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="file"
+          options={{ 
+            headerBackTitle: 'Accueil',
+            headerBackVisible: true,
+            headerShown: false,
+            // Force back button to always be visible on web
+            ...(Platform.OS === 'web' && {
+              headerLeft: undefined, // This will be handled in the file layout
+            })
+          }}
         />
       </Stack.Protected>
     </Stack>

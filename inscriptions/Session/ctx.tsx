@@ -4,12 +4,12 @@ import { useStorageState } from './useStorageState';
 const AuthContext = createContext<{
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => void;
-  session?: string | null;
+  session: boolean;
   isLoading: boolean;
 }>({
   signIn: async () => ({ success: false }),
   signOut: () => null,
-  session: null,
+  session: false,
   isLoading: false,
 });
 
@@ -31,7 +31,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       value={{
         signIn: async (email: string, password: string) => {
           try {
-            const response = await fetch('https://zq2s6rh4-8080.use.devtunnels.ms/api/login', {
+            const response = await fetch('https://sunnysidecode.com/miageconnect/api/login', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email, mot_de_passe: password }),
@@ -41,7 +41,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
               return { success: false, error: data.message || 'Erreur inconnue' };
             }
             // Optionally: store user info from data.utilisateur
-            setSession('xxx');
+            setSession('true');
             return { success: true };
           } catch (err) {
             return { success: false, error: 'Impossible de se connecter au serveur. Veuillez réessayer plus tard.' };
@@ -50,7 +50,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         signOut: () => {
           setSession(null);
         },
-        session,
+        session: !!session,
         isLoading,
       }}>
       {children}

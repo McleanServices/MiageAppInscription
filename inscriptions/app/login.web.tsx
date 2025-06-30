@@ -1,12 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from "react-native";
 import { useSession } from '../Session/ctx';
@@ -21,6 +25,79 @@ SplashScreen.setOptions({
   fade: true,
 });
 
+type LoginCardProps = {
+  styles: any;
+  email: string;
+  setEmail: (val: string) => void;
+  motDePasse: string;
+  setMotDePasse: (val: string) => void;
+  error: string | null;
+  loading: boolean;
+  handleLogin: () => void;
+  router: any;
+};
+
+function LoginCard({ styles, email, setEmail, motDePasse, setMotDePasse, error, loading, handleLogin, router }: LoginCardProps) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.title}>SE CONNECTER</Text>
+      <View style={styles.titleUnderline} />
+      <View style={styles.errorBoxWrapper}>
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">{error}</Text>
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.inputContainer}>
+        <TextInput
+          placeholder="Email"
+          style={styles.input}
+          placeholderTextColor="#555"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          returnKeyType="next"
+          selectionColor="transparent"
+          underlineColorAndroid="transparent"
+        />
+        <Ionicons name="person-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
+      </View>
+      <View style={styles.inputContainer}>
+        <TextInput
+          placeholder="Mot de passe"
+          style={styles.input}
+          placeholderTextColor="#555"
+          secureTextEntry
+          value={motDePasse}
+          onChangeText={setMotDePasse}
+          returnKeyType="go"
+          onSubmitEditing={handleLogin}
+          blurOnSubmit={false}
+          selectionColor="transparent"
+          underlineColorAndroid="transparent"
+        />
+        <Ionicons name="lock-closed-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
+      </View>
+      <View style={styles.forgotPasswordContainer}>
+        <TouchableOpacity>
+          <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
+        </TouchableOpacity>
+      </View>
+      <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
+        <Text style={styles.loginButtonText}>{loading ? 'Connexion...' : 'CONNEXION'}</Text>
+      </TouchableOpacity>
+      <Text style={styles.registerLink}>
+        pas un compte?{' '}
+        <Text style={styles.registerLinkUnderline} onPress={() => router.replace('/register')}>
+          créer un compte
+        </Text>
+      </Text>
+    </View>
+  );
+}
+
 export default function Index() {
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
 
@@ -33,6 +110,9 @@ export default function Index() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const { width } = useWindowDimensions();
+  const isMobile = width <= 1040;
+
   useEffect(() => {
     async function prepare() {
       try {
@@ -40,7 +120,7 @@ export default function Index() {
     
         // Artificially delay for two seconds to simulate a slow loading
         // experience. Remove this if you copy and paste the code!
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (e) {
         console.warn(e);
       } finally {
@@ -71,7 +151,7 @@ export default function Index() {
     const result = await signIn(email, motDePasse);
     
     if (result.success) {
-      router.replace('/home');
+      router.replace('/');
     } else {
       setError(result.error || 'Erreur inconnue');
     }
@@ -83,8 +163,45 @@ export default function Index() {
     return null;
   }
 
+  if (isMobile) {
+    // MOBILE/TABLET LAYOUT (like login.tsx)
+    return (
+      <KeyboardAvoidingView
+        style={mobileStyles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+      >
+        <View style={mobileStyles.centeredView}>
+          {/* Logo Row */}
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
+            <Image source={require('../assets/images/miage-logo.png')} style={{ width: 80, height: 80, marginHorizontal: 4 }} contentFit="contain" />
+            <Image source={require('../assets/images/miage-logo.png')} style={{ width: 80, height: 80, marginHorizontal: 4 }} contentFit="contain" />
+            <Image source={require('../assets/images/miage-logo.png')} style={{ width: 80, height: 80, marginHorizontal: 4 }} contentFit="contain" />
+            <Image source={require('../assets/images/miage-logo.png')} style={{ width: 80, height: 80, marginHorizontal: 4 }} contentFit="contain" />
+          </View>
+          <LoginCard
+            styles={mobileStyles}
+            email={email}
+            setEmail={setEmail}
+            motDePasse={motDePasse}
+            setMotDePasse={setMotDePasse}
+            error={error}
+            loading={loading}
+            handleLogin={handleLogin}
+            router={router}
+          />
+          <View style={mobileStyles.shadowBackground} />
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // DESKTOP/TABLET LAYOUT (current two-column)
   return (
-    <View style={styles.outerContainer}>
+    <KeyboardAvoidingView 
+      style={styles.outerContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={styles.innerContainer}>
         {/* Left Section: Welcome and Register */}
         <View style={styles.leftSection}>
@@ -97,58 +214,27 @@ export default function Index() {
         </View>
         {/* Right Section: Login Card */}
         <View style={styles.rightSection}>
-          <View style={styles.card}>
-            <Text style={styles.title}>SE CONNECTER</Text>
-            <View style={styles.titleUnderline} />
-            <View style={styles.errorBoxWrapper}>
-              {error ? (
-                <View style={styles.errorBox}>
-                  <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">{error}</Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={styles.inputContainer}>
-              <TextInput
-                placeholder="Email"
-                style={styles.input}
-                placeholderTextColor="#555"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-              <Ionicons name="person-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
-            </View>
-            <View style={styles.inputContainer}>
-              <TextInput
-                placeholder="Mot de passe"
-                style={styles.input}
-                placeholderTextColor="#555"
-                secureTextEntry
-                value={motDePasse}
-                onChangeText={setMotDePasse}
-              />
-              <Ionicons name="lock-closed-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
-            </View>
-            <View style={styles.forgotPasswordContainer}>
-              <TouchableOpacity>
-                <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
-              <Text style={styles.loginButtonText}>{loading ? 'Connexion...' : 'CONNEXION'}</Text>
-            </TouchableOpacity>
-          </View>
+          <LoginCard
+            styles={styles}
+            email={email}
+            setEmail={setEmail}
+            motDePasse={motDePasse}
+            setMotDePasse={setMotDePasse}
+            error={error}
+            loading={loading}
+            handleLogin={handleLogin}
+            router={router}
+          />
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
-    backgroundColor: '#174B7A',
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -280,6 +366,11 @@ const styles = StyleSheet.create({
     flex: 1,
     color: "#333",
     fontSize: 16,
+    ...(Platform.OS === 'web' && {
+      outline: 'none',
+      border: 'none',
+      boxShadow: 'none',
+    }),
   },
   inputIcon: {
     marginLeft: 8,
@@ -308,5 +399,156 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
     fontSize: 16,
+  },
+  registerLink: {
+    color: "#fff",
+    fontSize: 15,
+    marginTop: 10,
+    opacity: 0.85,
+    textAlign: "center",
+  },
+  registerLinkUnderline: {
+    textDecorationLine: "underline",
+    color: "#fff",
+  },
+  shadowBackground: {
+    width: "90%",
+    maxWidth: 600,
+    height: 150,
+    backgroundColor: "#0A2342",
+    borderBottomLeftRadius: 60,
+    borderBottomRightRadius: 60,
+    alignSelf: "center",
+    marginTop: -60,
+    zIndex: 0,
+  },
+});
+
+// MOBILE STYLES (from login.tsx)
+const mobileStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: 600,
+  },
+  card: {
+    backgroundColor: "#1686B0",
+    borderRadius: 60,
+    width: "90%",
+    maxWidth: 600,
+    alignItems: "center",
+    paddingVertical: 20,
+    marginTop: 0,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+    zIndex: 1,
+  },
+  title: {
+    color: "#fff",
+    fontSize: 32,
+    fontWeight: "bold",
+    marginBottom: 0,
+    letterSpacing: 1,
+    textAlign: "center"
+  },
+  titleUnderline: {
+    width: 160,
+    height: 4,
+    backgroundColor: "#3CA1D8",
+    opacity: 0.4,
+    marginTop: 6,
+    marginBottom: 28,
+    borderRadius: 2,
+    alignSelf: "center"
+  },
+  errorBoxWrapper: {
+    height: 48,
+    width: '100%',
+    justifyContent: 'center',
+    marginBottom: 0,
+    overflow: 'hidden',
+  },
+  errorBox: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 5,
+    minHeight: 28,
+    justifyContent: 'center',
+  },
+  errorText: {
+    color: '#d32f2f',
+    textAlign: 'center'
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F2F2F2",
+    borderRadius: 5,
+    marginBottom: 15,
+    paddingHorizontal: 10,
+    width: 320,
+    height: 48,
+  },
+  input: {
+    flex: 1,
+    color: "#333",
+    fontSize: 16,
+  },
+  inputIcon: {
+    marginLeft: 8,
+  },
+  forgotPasswordContainer: {
+    width: 320,
+    alignItems: "flex-end",
+    marginBottom: 18,
+  },
+  forgotPasswordText: {
+    color: "#fff",
+    fontSize: 14,
+    opacity: 0.85,
+  },
+  loginButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E15A2D",
+    borderRadius: 5,
+    paddingVertical: 12,
+    width: 320,
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  loginButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  registerLink: {
+    color: "#fff",
+    fontSize: 15,
+    marginTop: 10,
+    opacity: 0.85,
+    textAlign: "center",
+  },
+  registerLinkUnderline: {
+    textDecorationLine: "underline",
+    color: "#fff",
+  },
+  shadowBackground: {
+    width: "90%",
+    maxWidth: 600,
+    height: 150,
+    backgroundColor: "#0A2342",
+    borderBottomLeftRadius: 60,
+    borderBottomRightRadius: 60,
+    alignSelf: "center",
+    marginTop: -60,
+    zIndex: 0,
   },
 });

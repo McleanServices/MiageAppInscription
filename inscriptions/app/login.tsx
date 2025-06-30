@@ -1,20 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image } from 'expo-image'; // <-- added import
+import * as LocalAuthentication from 'expo-local-authentication';
+import { Link, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView, // added import
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSession } from '../Session/ctx';
-import { Link } from 'expo-router';
-import { Image } from 'expo-image'; // <-- added import
 
 
 // Keep the splash screen visible while we fetch resources
@@ -26,7 +28,7 @@ SplashScreen.setOptions({
   fade: true,
 });
 
-export default function Index() {
+export default function Login() {
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
 
   const { signIn } = useSession();
@@ -37,6 +39,10 @@ export default function Index() {
   const [motDePasse, setMotDePasse] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [biometricPrompted, setBiometricPrompted] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [showBiometricModal, setShowBiometricModal] = useState(false);
 
   useEffect(() => {
     async function prepare() {
@@ -57,6 +63,28 @@ export default function Index() {
     prepare();
   }, []);
 
+  useEffect(() => {
+    // Check if biometrics is enabled and available
+    const checkBiometrics = async () => {
+      const enabled = await AsyncStorage.getItem('biometricEnabled');
+      setBiometricEnabled(enabled === 'true');
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      setBiometricAvailable(hasHardware && isEnrolled);
+      // If enabled, prompt for biometrics
+      if (enabled === 'true' && hasHardware && isEnrolled && !biometricPrompted) {
+        setBiometricPrompted(true);
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Authentifiez-vous pour vous connecter',
+        });
+        if (result.success) {
+          router.replace('/');
+        }
+      }
+    };
+    checkBiometrics();
+  }, []);
+
   const onLayoutRootView = useCallback(() => {
     if (appIsReady) {
       // This tells the splash screen to hide immediately! If we call this after
@@ -72,16 +100,36 @@ export default function Index() {
   const handleLogin = async () => {
     setError(null);
     setLoading(true);
-    
     const result = await signIn(email, motDePasse);
-    
     if (result.success) {
-      router.replace('/home');
+      if (biometricAvailable) {
+        setShowBiometricModal(true);
+      } else {
+        router.replace('/home');
+      }
     } else {
       setError(result.error || 'Erreur inconnue');
     }
-    
     setLoading(false);
+  };
+
+  const handleEnableBiometrics = async () => {
+    setShowBiometricModal(false);
+    const bioResult = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Activez la connexion biométrique',
+    });
+    if (bioResult.success) {
+      await AsyncStorage.setItem('biometricEnabled', 'true');
+      setBiometricEnabled(true);
+    }
+    router.replace('/home');
+  };
+
+  const handleDeclineBiometrics = async () => {
+    setShowBiometricModal(false);
+    await AsyncStorage.setItem('biometricEnabled', 'false');
+    setBiometricEnabled(false);
+    router.replace('/home');
   };
 
   if (!appIsReady) {
@@ -198,6 +246,32 @@ export default function Index() {
           </View>
           {/* Shadow background just under the card */}
           <View style={styles.shadowBackground} />
+          {/* Modal for biometric enable prompt */}
+          <Modal
+            visible={showBiometricModal}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowBiometricModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Connexion biométrique</Text>
+                </View>
+                <Text style={styles.modalMessage}>
+                  Voulez-vous activer la connexion biométrique pour la prochaine fois ?
+                </Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalButton} onPress={handleEnableBiometrics}>
+                    <Text style={[styles.modalButtonText, { color: '#2563EB' }]}>Oui, activer</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalButton} onPress={handleDeclineBiometrics}>
+                    <Text style={[styles.modalButtonText, { color: '#EF4444' }]}>Non, merci</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -341,5 +415,51 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     textAlign: "center",
-  }
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: 320,
+    alignItems: 'center',
+  },
+  modalHeader: {
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2563EB',
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 15,
+    color: '#333',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    marginHorizontal: 4,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });

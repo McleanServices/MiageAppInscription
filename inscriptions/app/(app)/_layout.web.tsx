@@ -12,19 +12,19 @@ export default function WebNavLayout() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.push('/home')}
+          onPress={() => router.push('/')}
           style={[
             styles.navButton,
-            pathname === '/home' && styles.activeNavButton,
+            pathname === '/' && styles.activeNavButton,
           ]}
         >
           <Text
             style={[
               styles.link,
-              pathname === '/home' && styles.activeLink,
+              pathname === '/' && styles.activeLink,
             ]}
           >
-            Home
+            Accueil
           </Text>
         </Pressable>
         <Pressable
@@ -40,7 +40,7 @@ export default function WebNavLayout() {
               pathname === '/profile' && styles.activeLink,
             ]}
           >
-            Profile
+            Profil
           </Text>
         </Pressable>
         {/* Add more nav items as needed */}
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   activeNavButton: {
-    backgroundColor: '#1976d2', // Blue background for active
+    backgroundColor: '#2563EB', // Blue background for active
   },
   link: {
     color: '#333',

@@ -1,6 +1,10 @@
 import { SessionProvider, useSession } from '../Session/ctx';
 import { SplashScreenController } from '../Session/splash';
 import { RootNavigator } from '../components/RootNavigator';
+
+
+
+
 export default function Root() {
   // Set up the auth context and render our layout inside of it.
   return (
@@ -10,6 +14,8 @@ export default function Root() {
     </SessionProvider>
   );
 }
+
+
 
 // Wrapper to wait for session loading before rendering navigation
 function RootNavigatorWrapper() {

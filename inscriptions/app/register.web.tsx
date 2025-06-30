@@ -1,22 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-
-
-import { Image } from 'expo-image'; // added import
 import React, { useCallback, useEffect, useState } from "react";
+import ReCAPTCHA from 'react-google-recaptcha';
 import {
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { useSession } from '../Session/ctx';
-
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -27,9 +23,9 @@ SplashScreen.setOptions({
   fade: true,
 });
 
-export default function Register() {
-  const [languageModalVisible, setLanguageModalVisible] = useState(false);
+const RECAPTCHA_SITE_KEY = '6LfkUXErAAAAAPWRveoLNLfEd9HW_Aob8g6KaU95'; // Replace with your actual site key
 
+export default function RegisterWeb() {
   const { signIn } = useSession();
   const [appIsReady, setAppIsReady] = useState(false);
 
@@ -41,15 +37,14 @@ export default function Register() {
   const [confirmerMotDePasse, setConfirmerMotDePasse] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = React.useRef<any>(null);
 
   useEffect(() => {
     async function prepare() {
       try {
         // Pre-load fonts, make any API calls you need to do here
-    
-        // Artificially delay for two seconds to simulate a slow loading
-        // experience. Remove this if you copy and paste the code!
-        await new Promise(resolve => setTimeout(resolve, 5));
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (e) {
         console.warn(e);
       } finally {
@@ -63,11 +58,6 @@ export default function Register() {
 
   const onLayoutRootView = useCallback(() => {
     if (appIsReady) {
-      // This tells the splash screen to hide immediately! If we call this after
-      // `setAppIsReady`, then we may see a blank screen while the app is
-      // loading its initial state and rendering its first pixels. So instead,
-      // we hide the splash screen once we know the root view has already
-      // performed layout.
       SplashScreen.hide();
     }
   }, [appIsReady]);
@@ -91,11 +81,18 @@ export default function Register() {
       return;
     }
 
+    // Check for captcha
+    if (!captchaToken) {
+      setError('Veuillez compléter le CAPTCHA.');
+      setLoading(false);
+      return;
+    }
+
     try {
       // 1. Get an idempotency key
       const keyResponse = await fetch('https://sunnysidecode.com/miageconnect/api/generate-idempotency-key');
       if (!keyResponse.ok) {
-        setError("Erreur lors de la génération de la clé d'idempotence.");
+        setError('Erreur lors de la génération de la clé d\'idempotence.');
         setLoading(false);
         return;
       }
@@ -104,7 +101,7 @@ export default function Register() {
       // 2. Use the key in signup request
       const response = await fetch('https://sunnysidecode.com/miageconnect/api/sign-up', {
         method: 'POST',
-        headers: {
+        headers: { 
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey
         },
@@ -114,13 +111,17 @@ export default function Register() {
           email,
           mot_de_passe: motDePasse,
           role: "utilisateur",
-          type: "Candidate"
+          type: "Candidate",
+          captchaToken,
         }),
       });
       const data = await response.json();
       if (!response.ok) {
         setError(data.message || 'Erreur inconnue');
         setLoading(false);
+        // Optionally reset captcha
+        if (recaptchaRef.current) recaptchaRef.current.reset();
+        setCaptchaToken(null);
         return;
       }
       // Registration successful, optionally auto-login or redirect
@@ -137,50 +138,29 @@ export default function Register() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+    <KeyboardAvoidingView 
+      style={styles.outerContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.centeredView}>
-          {/* Four images above the card */}
-          <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
-            <Image
-              source={require('../assets/images/miage-logo.png')}
-              style={{ width: 80, height: 80, marginHorizontal: 4 }}
-              contentFit="contain"
-            />
-            <Image
-              source={require('../assets/images/miage-logo.png')}
-              style={{ width: 80, height: 80, marginHorizontal: 4 }}
-              contentFit="contain"
-            />
-            <Image
-              source={require('../assets/images/miage-logo.png')}
-              style={{ width: 80, height: 80, marginHorizontal: 4 }}
-              contentFit="contain"
-            />
-            <Image
-              source={require('../assets/images/miage-logo.png')}
-              style={{ width: 80, height: 80, marginHorizontal: 4 }}
-              contentFit="contain"
-            />
-          </View>
-          {/* Card */}
-          <View style={styles.card}>
-            {/* Title */}
-            <Text style={styles.title}>
-              CRÉATION COMPTE
-            </Text>
+      <View style={styles.innerContainer}>
+        {/* Left Section: Welcome and Login */}
+        <View style={styles.leftSection}>
+          <Text style={styles.welcomeTitle}>REJOIGNEZ-NOUS!</Text>
+          <View style={styles.welcomeUnderline} />
+          <Text style={styles.welcomeSubtitle}>Vous avez déjà un compte ?</Text>
+          <TouchableOpacity style={styles.loginButton} onPress={() => router.replace('/login')}>
+            <Text style={styles.loginButtonText}>Se connecter</Text>
+          </TouchableOpacity>
+        </View>
+        {/* Right Section: Register Card */}
+        <View style={styles.rightSection}>
+          <View style={styles.formContainer}>
+            <Text style={styles.title}>CRÉATION COMPTE</Text>
             <View style={styles.titleUnderline} />
-            {/* Error message (fixed height to prevent bounce) */}
             <View style={styles.errorBoxWrapper}>
               {error ? (
                 <View style={styles.errorBox}>
-                  <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
-                    {error}
-                  </Text>
+                  <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">{error}</Text>
                 </View>
               ) : null}
             </View>
@@ -195,8 +175,9 @@ export default function Register() {
                   value={nom}
                   onChangeText={setNom}
                   autoCapitalize="words"
+                  selectionColor="#E15A2D"
+                  underlineColorAndroid="transparent"
                 />
-                <Ionicons name="person-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
               </View>
               <View style={[styles.inputContainer, styles.halfInput, { marginLeft: 5 }]}>
                 <TextInput
@@ -206,8 +187,9 @@ export default function Register() {
                   value={prenom}
                   onChangeText={setPrenom}
                   autoCapitalize="words"
+                  selectionColor="#E15A2D"
+                  underlineColorAndroid="transparent"
                 />
-                <Ionicons name="person-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
               </View>
             </View>
 
@@ -221,6 +203,8 @@ export default function Register() {
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
+                selectionColor="#E15A2D"
+                underlineColorAndroid="transparent"
               />
               <Ionicons name="mail-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
             </View>
@@ -234,6 +218,8 @@ export default function Register() {
                 secureTextEntry
                 value={motDePasse}
                 onChangeText={setMotDePasse}
+                selectionColor="#E15A2D"
+                underlineColorAndroid="transparent"
               />
               <Ionicons name="lock-closed-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
             </View>
@@ -247,8 +233,21 @@ export default function Register() {
                 secureTextEntry
                 value={confirmerMotDePasse}
                 onChangeText={setConfirmerMotDePasse}
+                onSubmitEditing={handleRegister}
+                selectionColor="#E15A2D"
+                underlineColorAndroid="transparent"
               />
               <Ionicons name="lock-closed-outline" size={24} color="#E15A2D" style={styles.inputIcon} />
+            </View>
+
+            {/* ReCAPTCHA widget */}
+            <View style={{ marginBottom: 18, width: 320, alignItems: 'center' }}>
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={RECAPTCHA_SITE_KEY}
+                onChange={(token: string | null) => setCaptchaToken(token)}
+                theme="light"
+              />
             </View>
 
             {/* Forgot password - right aligned */}
@@ -258,61 +257,99 @@ export default function Register() {
               </TouchableOpacity>
             </View>
 
-            {/* Login/Register button */}
-            <TouchableOpacity
-              style={styles.loginButton}
-              onPress={handleRegister}
-              disabled={loading}
-            >
-              <Text style={styles.loginButtonText}>
+            {/* Register button */}
+            <TouchableOpacity style={styles.registerButton} onPress={handleRegister} disabled={loading}>
+              <Text style={styles.registerButtonText}>
                 {loading ? 'Inscription...' : "S'INSCRIRE"}
               </Text>
               <Ionicons name="arrow-forward-outline" size={20} color="#fff" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
-
-            {/* Register link */}
-            <TouchableOpacity onPress={() => router.push('/login')}>
-              <Text style={styles.registerLink}>
-              pas un compte? <Text style={styles.registerLinkUnderline}>inscrire vous</Text>
-              </Text>
-            </TouchableOpacity>
           </View>
-          {/* Shadow background just under the card */}
-          <View style={styles.shadowBackground} />
         </View>
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  centeredView: {
+  innerContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#0A2342',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 8, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+    width: '95%',
+    maxWidth: 1100,
+    minHeight: 650,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leftSection: {
     flex: 1,
-    justifyContent: "center",
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    padding: 48,
+    minWidth: 350,
+  },
+  welcomeTitle: {
+    color: '#fff',
+    fontSize: 48,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    letterSpacing: 1,
+  },
+  welcomeUnderline: {
+    width: 80,
+    height: 5,
+    backgroundColor: '#3CA1D8',
+    marginBottom: 24,
+    borderRadius: 2,
+  },
+  welcomeSubtitle: {
+    color: '#fff',
+    fontSize: 20,
+    marginBottom: 24,
+    fontWeight: '500',
+  },
+  loginButton: {
+    backgroundColor: '#E15A2D',
+    borderRadius: 5,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+    letterSpacing: 0.5,
+  },
+  rightSection: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 350,
+    padding: 48,
+  },
+  formContainer: {
     alignItems: "center",
-    minHeight: 600, // add a fixed minHeight to stabilize vertical position
-  },
-  card: {
-    backgroundColor: "#1686B0",
-    borderRadius: 60,
     width: "90%",
     maxWidth: 600,
-    alignItems: "center",
-    paddingVertical: 20, // reduced from 36 to 20
-    marginTop: 0,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-    zIndex: 1,
   },
   title: {
     color: "#fff",
-    fontSize: 26, // reduced from 32 to 26
+    fontSize: 32,
     fontWeight: "bold",
     marginBottom: 0,
     letterSpacing: 1,
@@ -321,15 +358,15 @@ const styles = StyleSheet.create({
   titleUnderline: {
     width: 160,
     height: 4,
-    backgroundColor: "#3CA1D8", // match login: lighter blue
-    opacity: 0.4, // more dim
+    backgroundColor: "#3CA1D8",
+    opacity: 0.4,
     marginTop: 6,
     marginBottom: 28,
     borderRadius: 2,
     alignSelf: "center"
   },
   errorBoxWrapper: {
-    height: 48, // increased fixed height for error area
+    height: 48,
     width: '100%',
     justifyContent: 'center',
     marginBottom: 0,
@@ -360,6 +397,9 @@ const styles = StyleSheet.create({
     flex: 1,
     color: "#333",
     fontSize: 16,
+    ...(Platform.OS === 'web' && {
+      borderWidth: 0,
+    }),
   },
   inputIcon: {
     marginLeft: 8,
@@ -374,7 +414,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.85,
   },
-  loginButton: {
+  registerButton: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#E15A2D",
@@ -384,32 +424,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 10,
   },
-  loginButtonText: {
+  registerButtonText: {
     color: "#fff",
     fontWeight: "bold",
     fontSize: 16,
-  },
-  registerLink: {
-    color: "#fff",
-    fontSize: 15,
-    marginTop: 10,
-    opacity: 0.85,
-    textAlign: "center",
-  },
-  registerLinkUnderline: {
-    textDecorationLine: "underline",
-    color: "#fff",
-  },
-  shadowBackground: {
-    width: "90%",
-    maxWidth: 600,
-    height: 150,
-    backgroundColor: "#0A2342",
-    borderBottomLeftRadius: 60,
-    borderBottomRightRadius: 60,
-    alignSelf: "center",
-    marginTop: -60,
-    zIndex: 0,
   },
   row: {
     flexDirection: "row",
@@ -419,7 +437,6 @@ const styles = StyleSheet.create({
   },
   halfInput: {
     width: 155,
-    // Ensure same height and padding as inputContainer
     height: 48,
     paddingHorizontal: 10,
     backgroundColor: "#F2F2F2",
@@ -428,3 +445,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 });
+    

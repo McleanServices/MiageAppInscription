@@ -1,20 +1,60 @@
-import { useState } from "react";
-import { Text, View, TextInput, TouchableOpacity, ScrollView, Image } from "react-native";
+import React, { useState } from "react";
+import { Image, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 // Liste des pays du monde (extrait, à compléter si besoin)
 const countries = [
   "Afghanistan", "Afrique du Sud", "Albanie", "Algérie", "Allemagne", "Andorre", "Angola", "Antigua-et-Barbuda", "Arabie saoudite", "Argentine", "Arménie", "Australie", "Autriche", "Azerbaïdjan", "Bahamas", "Bahreïn", "Bangladesh", "Barbade", "Belgique", "Belize", "Bénin", "Bhoutan", "Biélorussie", "Birmanie", "Bolivie", "Bosnie-Herzégovine", "Botswana", "Brésil", "Brunei", "Bulgarie", "Burkina Faso", "Burundi", "Cambodge", "Cameroun", "Canada", "Cap-Vert", "République centrafricaine", "Chili", "Chine", "Chypre", "Colombie", "Comores", "Congo-Brazzaville", "Congo-Kinshasa", "Îles Cook", "Corée du Nord", "Corée du Sud", "Costa Rica", "Côte d'Ivoire", "Croatie", "Cuba", "Danemark", "Djibouti", "Dominique", "Égypte", "Émirats arabes unis", "Équateur", "Érythrée", "Espagne", "Estonie", "Eswatini", "États-Unis", "Éthiopie", "Fidji", "Finlande", "France", "Gabon", "Gambie", "Géorgie", "Ghana", "Grèce", "Grenade", "Guatemala", "Guinée", "Guinée-Bissau", "Guinée équatoriale", "Guyana", "Haïti", "Honduras", "Hongrie", "Inde", "Indonésie", "Irak", "Iran", "Irlande", "Islande", "Israël", "Italie", "Jamaïque", "Japon", "Jordanie", "Kazakhstan", "Kenya", "Kirghizistan", "Kiribati", "Koweït", "Laos", "Lesotho", "Lettonie", "Liban", "Liberia", "Libye", "Liechtenstein", "Lituanie", "Luxembourg", "Macédoine du Nord", "Madagascar", "Malaisie", "Malawi", "Maldives", "Mali", "Malte", "Maroc", "Îles Marshall", "Maurice", "Mauritanie", "Mexique", "Micronésie", "Moldavie", "Monaco", "Mongolie", "Monténégro", "Mozambique", "Namibie", "Nauru", "Népal", "Nicaragua", "Niger", "Nigéria", "Norvège", "Nouvelle-Zélande", "Oman", "Ouganda", "Ouzbékistan", "Pakistan", "Palaos", "Palestine", "Panama", "Papouasie-Nouvelle-Guinée", "Paraguay", "Pays-Bas", "Pérou", "Philippines", "Pologne", "Portugal", "Qatar", "Roumanie", "Royaume-Uni", "Russie", "Rwanda", "Saint-Kitts-et-Nevis", "Saint-Marin", "Saint-Vincent-et-les-Grenadines", "Sainte-Lucie", "Salomon", "Salvador", "Samoa", "Sao Tomé-et-Principe", "Sénégal", "Serbie", "Seychelles", "Sierra Leone", "Singapour", "Slovaquie", "Slovénie", "Somalie", "Soudan", "Soudan du Sud", "Sri Lanka", "Suède", "Suisse", "Suriname", "Syrie", "Tadjikistan", "Tanzanie", "Tchad", "République tchèque", "Thaïlande", "Timor oriental", "Togo", "Tonga", "Trinité-et-Tobago", "Tunisie", "Turkménistan", "Turquie", "Tuvalu", "Ukraine", "Uruguay", "Vanuatu", "Vatican", "Venezuela", "Viêt Nam", "Yémen", "Zambie", "Zimbabwe"
 ];
 
+// Define colors and styles at the top
+const mainColor = '#0C284F';
+
+const inputStyle = {
+  backgroundColor: '#fff',
+  borderRadius: 12,
+  paddingVertical: 16,
+  paddingLeft: 20,
+  paddingRight: 20,
+  marginBottom: 12,
+  fontSize: 16,
+  borderWidth: 2,
+  borderColor: '#E5E7EB',
+  color: '#1F2937',
+  height: 56,
+  boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+  transition: 'all 0.2s ease-in-out',
+  ':focus': {
+    borderColor: mainColor,
+    boxShadow: '0 0 0 3px rgba(12, 40, 79, 0.1)',
+    outline: 'none'
+  }
+};
+
+const dateMenuStyle = {
+  borderWidth: 2,
+  borderColor: '#E5E7EB',
+  borderRadius: 12,
+  paddingVertical: 16,
+  paddingHorizontal: 20,
+  marginRight: 8,
+  backgroundColor: '#fff',
+  height: 56,
+  boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+  transition: 'all 0.2s ease-in-out',
+  ':focus': {
+    borderColor: mainColor,
+    boxShadow: '0 0 0 3px rgba(12, 40, 79, 0.1)',
+    outline: 'none'
+  }
+};
+
 export default function Index() {
   // 1. État pour la page sélectionnée
   const [selectedPage, setSelectedPage] = useState("infos");
   // État pour la civilité
   const [civilite, setCivilite] = useState("");
-  // États pour la date de naissance
-  const [birthDay, setBirthDay] = useState("");
-  const [birthMonth, setBirthMonth] = useState("");
-  const [birthYear, setBirthYear] = useState("");
+  // État pour la date de naissance (unifié)
+  const [birthDate, setBirthDate] = useState("");
   // État pour diplôme français
   const [diplomeFrancais, setDiplomeFrancais] = useState("");
   // État pour le choix des relevés de notes
@@ -29,12 +69,12 @@ export default function Index() {
         <>
           {/* Logos */}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
-            <Image source={require('../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
-            <Image source={require('../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
           </View>
           {/* Title */}
           <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 18 }}>Mes informations personnelles</Text>
-          <Text style={{ color: '#444', fontSize: 13, marginBottom: 2 }}>Complétez ci-dessous vos données personnelles telles qu'elles apparaissent sur vos documents d'identité.</Text>
+          <Text style={{ color: '#444', fontSize: 13, marginBottom: 2 }}>Complétez ci-dessous vos données personnelles telles qu&apos;elles apparaissent sur vos documents d&apos;identité.</Text>
           <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 18 }}>Les informations suivies de * sont obligatoires.</Text>
           {/* Civilité */}
           <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>Civilité *</Text>
@@ -62,55 +102,52 @@ export default function Index() {
           {/* Naissance */}
           <Text style={{ fontSize: 20, fontWeight: 'bold', marginTop: 30, marginBottom: 12 }}>Naissance</Text>
           <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Date de naissance *</Text>
-          <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-            {/* Jour */}
-            <View style={[dateMenuStyle, { minWidth: 60, marginRight: 8 }]}> 
-              <select
-                value={birthDay}
-                onChange={e => setBirthDay(e.target.value)}
-                style={{ borderWidth: 0, backgroundColor: 'transparent', color: mainColor, fontSize: 15 }}
-              >
-                <option value="">Jour</option>
-                {[...Array(31)].map((_, i) => (
-                  <option key={i+1} value={i+1}>{i+1}</option>
-                ))}
-              </select>
-            </View>
-            {/* Mois */}
-            <View style={[dateMenuStyle, { minWidth: 110, marginRight: 8 }]}> 
-              <select
-                value={birthMonth}
-                onChange={e => setBirthMonth(e.target.value)}
-                style={{ borderWidth: 0, backgroundColor: 'transparent', color: mainColor, fontSize: 15 }}
-              >
-                <option value="">Mois</option>
-                {['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m, i) => (
-                  <option key={i+1} value={m}>{m}</option>
-                ))}
-              </select>
-            </View>
-            {/* Année */}
-            <View style={[dateMenuStyle, { minWidth: 90 }]}> 
-              <select
-                value={birthYear}
-                onChange={e => setBirthYear(e.target.value)}
-                style={{ borderWidth: 0, backgroundColor: 'transparent', color: mainColor, fontSize: 15 }}
-              >
-                <option value="">Année</option>
-                {Array.from({length: 2024-1980+1}, (_, i) => 1980+i).reverse().map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </View>
-          </View>
+          <input
+            type="date"
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              marginBottom: '12px',
+              fontSize: '16px',
+              border: '2px solid #E5E7EB',
+              color: '#1F2937',
+              height: '56px',
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+              transition: 'all 0.2s ease-in-out',
+              minWidth: '200px',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+            max={new Date().toISOString().split('T')[0]}
+            onFocus={e => { e.target.style.outline = 'none'; e.target.style.boxShadow = 'none'; }}
+            onBlur={e => { e.target.style.outline = 'none'; e.target.style.boxShadow = 'none'; }}
+          />
           <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Pays de naissance *</Text>
-          <View style={[inputStyle, { padding: 0, marginBottom: 6 }]}> 
+          <View style={[inputStyle, { padding: 0, marginBottom: 12 }]}> 
             <select
-              style={{ borderWidth: 0, backgroundColor: 'transparent', color: mainColor, fontSize: 15, width: '100%', padding: 10 }}
+              style={{ 
+                borderWidth: 0, 
+                backgroundColor: 'transparent', 
+                color: '#1F2937', 
+                fontSize: 16, 
+                width: '100%', 
+                height: 56,
+                padding: '0 20px',
+                cursor: 'pointer',
+                outline: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start'
+              }}
+              onFocus={e => { e.target.style.outline = 'none'; e.target.style.boxShadow = 'none'; }}
+              onBlur={e => { e.target.style.outline = 'none'; e.target.style.boxShadow = 'none'; }}
             >
-              <option value="">Sélectionnez un pays</option>
+              <option value="" style={{ padding: '16px 0' }}>Sélectionnez un pays</option>
               {countries.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c} style={{ padding: '16px 0' }}>{c}</option>
               ))}
             </select>
           </View>
@@ -121,13 +158,28 @@ export default function Index() {
           {/* Adresse */}
           <Text style={{ fontSize: 20, fontWeight: 'bold', marginTop: 30, marginBottom: 12 }}>Adresse</Text>
           <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Pays*</Text>
-          <View style={[inputStyle, { padding: 0, marginBottom: 6 }]}> 
+          <View style={[inputStyle, { padding: 0, marginBottom: 12 }]}> 
             <select
-              style={{ borderWidth: 0, backgroundColor: 'transparent', color: mainColor, fontSize: 15, width: '100%', padding: 10 }}
+              style={{ 
+                borderWidth: 0, 
+                backgroundColor: 'transparent', 
+                color: '#1F2937', 
+                fontSize: 16, 
+                width: '100%', 
+                height: 56,
+                padding: '0 20px',
+                cursor: 'pointer',
+                outline: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start'
+              }}
+              onFocus={e => { e.target.style.outline = 'none'; e.target.style.boxShadow = 'none'; }}
+              onBlur={e => { e.target.style.outline = 'none'; e.target.style.boxShadow = 'none'; }}
             >
-              <option value="">Sélectionnez un pays</option>
+              <option value="" style={{ padding: '16px 0' }}>Sélectionnez un pays</option>
               {countries.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c} style={{ padding: '16px 0' }}>{c}</option>
               ))}
             </select>
           </View>
@@ -135,8 +187,20 @@ export default function Index() {
           <TextInput placeholder="" style={inputStyle} />
           <Text style={{ fontWeight: 'bold', marginBottom: 4, marginTop: 12 }}>Ville/Commune</Text>
           <TextInput placeholder="" style={inputStyle} />
-          <TouchableOpacity style={{ backgroundColor: '#fff', borderColor: mainColor, borderWidth: 1, borderRadius: 6, padding: 12, marginTop: 18, alignItems: 'center', width: 180, height: 48, justifyContent: 'center' }}>
-            <Text style={{ color: mainColor, fontWeight: 'bold' }}>Enregistrer</Text>
+          <TouchableOpacity style={{ 
+            backgroundColor: mainColor, 
+            borderColor: mainColor, 
+            borderWidth: 2, 
+            borderRadius: 12, 
+            padding: 16, 
+            marginTop: 24, 
+            alignItems: 'center', 
+            width: 200, 
+            height: 56, 
+            justifyContent: 'center',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+          }}>
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Enregistrer</Text>
           </TouchableOpacity>
         </>
       );
@@ -145,8 +209,8 @@ export default function Index() {
       return (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
-            <Image source={require('../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
-            <Image source={require('../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
           </View>
           <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 18 }}>Mes coordonnées</Text>
           <Text style={{ color: '#444', fontSize: 13, marginBottom: 2 }}>Complétez vos coordonnées.</Text>
@@ -170,8 +234,8 @@ export default function Index() {
       return (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
-            <Image source={require('../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
-            <Image source={require('../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
           </View>
           <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 18 }}>Mon curriculum vitae (CV)</Text>
           <Text style={{ color: '#444', fontSize: 13, marginBottom: 12 }}>
@@ -182,7 +246,7 @@ export default function Index() {
           <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>Mon curriculum vitae (CV) *</Text>
           <Text style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
             Téléversez votre curriculum vitae (CV). Le fichier téléversé doit avoir une taille maximale de 2 Mo. Les formats de fichiers supportés sont : JPEG, JPG, PNG, PDF.{"\n"}
-            Assurez-vous que le nom du fichier n'est pas trop long, ne contient que des caractères latins et ne contient pas de caractère accentué.
+            Assurez-vous que le nom du fichier n&apos;est pas trop long, ne contient que des caractères latins et ne contient pas de caractère accentué.
           </Text>
           {/* Zone d'upload fictive */}
           <View style={{ flexDirection: 'row', marginBottom: 10, alignItems: 'center' }}>
@@ -214,19 +278,19 @@ export default function Index() {
       return (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
-            <Image source={require('../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
-            <Image source={require('../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
           </View>
           <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 18 }}>Ajouter une année de cursus post-baccalauréat</Text>
           <Text style={{ color: '#444', fontSize: 13, marginBottom: 2 }}>
-            Complétez ci-dessous vos données personnelles telles qu'elles apparaissent sur vos documents d'identité.
+            Complétez ci-dessous vos données personnelles telles qu&apos;elles apparaissent sur vos documents d&apos;identité.
           </Text>
           <Text style={{ color: '#aaa', fontSize: 11, marginBottom: 18 }}>
             Les informations suivies de * sont obligatoires.
           </Text>
           <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Année universitaire*</Text>
           <TextInput placeholder="" style={inputStyle} />
-          <Text style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 12 }}>S'agit-il d'un diplôme français ? *</Text>
+          <Text style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 12 }}>S&apos;agit-il d&apos;un diplôme français ? *</Text>
           <View style={{ flexDirection: 'row', marginBottom: 12 }}>
             <TouchableOpacity
               style={{ borderWidth: 1, borderColor: mainColor, borderRadius: 6, paddingVertical: 6, paddingHorizontal: 18, marginRight: 12, backgroundColor: diplomeFrancais === 'oui' ? '#EAF0FB' : '#fff' }}
@@ -242,13 +306,13 @@ export default function Index() {
             </TouchableOpacity>
           </View>
           <Text style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
-            Si vous avez préparé un diplôme français lors de l'année concernée, répondez Oui.{"\n"}
-            S'il s'agit d'un diplôme étranger, répondez Non.{"\n"}
-            Si vous ne disposez d'aucun diplôme de l'enseignement supérieur, répondez Oui.
+            Si vous avez préparé un diplôme français lors de l&apos;année concernée, répondez Oui.{"\n"}
+            S&apos;il s&apos;agit d&apos;un diplôme étranger, répondez Non.{"\n"}
+            Si vous ne disposez d&apos;aucun diplôme de l&apos;enseignement supérieur, répondez Oui.
           </Text>
           <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Niveau post-bac du diplôme préparé *</Text>
           <Text style={{ color: '#888', fontSize: 12, marginBottom: 4 }}>
-            Sélectionnez le niveau post-bac du diplôme préparé pour l'année renseignée. Si cette année de cursus post-bac ne prépare à aucun diplôme, sélectionner « Pas de diplôme de l'enseignement supérieur »
+            Sélectionnez le niveau post-bac du diplôme préparé pour l&apos;année renseignée. Si cette année de cursus post-bac ne prépare à aucun diplôme, sélectionner « Pas de diplôme de l&apos;enseignement supérieur »
           </Text>
           <TextInput placeholder="" style={inputStyle} />
           <TouchableOpacity style={{ backgroundColor: '#fff', borderColor: mainColor, borderWidth: 1, borderRadius: 6, padding: 12, marginTop: 18, alignItems: 'center', width: 180, height: 48, justifyContent: 'center' }}>
@@ -261,8 +325,8 @@ export default function Index() {
       return (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
-            <Image source={require('../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
-            <Image source={require('../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
           </View>
           <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 18 }}>Mes relevés de notes</Text>
           <Text style={{ color: '#444', fontSize: 13, marginBottom: 12 }}>
@@ -282,7 +346,7 @@ export default function Index() {
             style={{ padding: 10, marginBottom: 8, backgroundColor: '#fff' }}
             onPress={() => setNotesSituation('dispo-traduits')}
           >
-            <Text style={{ color: mainColor, fontWeight: notesSituation === 'dispo-traduits' ? 'bold' : 'normal' }}>{notesSituation === 'dispo-traduits' ? '●' : '○'} Je dispose de mes relevés de notes et ceux obtenus à l'étranger sont traduits en français ou en anglais</Text>
+            <Text style={{ color: mainColor, fontWeight: notesSituation === 'dispo-traduits' ? 'bold' : 'normal' }}>{notesSituation === 'dispo-traduits' ? '●' : '○'} Je dispose de mes relevés de notes et ceux obtenus à l&apos;étranger sont traduits en français ou en anglais</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={{ padding: 10, marginBottom: 8, backgroundColor: '#fff' }}
@@ -294,12 +358,12 @@ export default function Index() {
             style={{ padding: 10, marginBottom: 8, backgroundColor: '#fff' }}
             onPress={() => setNotesSituation('aucun')}
           >
-            <Text style={{ color: mainColor, fontWeight: notesSituation === 'aucun' ? 'bold' : 'normal' }}>{notesSituation === 'aucun' ? '●' : '○'} Je ne dispose d'aucun relevé de notes</Text>
+            <Text style={{ color: mainColor, fontWeight: notesSituation === 'aucun' ? 'bold' : 'normal' }}>{notesSituation === 'aucun' ? '●' : '○'} Je ne dispose d&apos;aucun relevé de notes</Text>
           </TouchableOpacity>
           <Text style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 16 }}>Vos relevés de notes *</Text>
           <Text style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
             Téléversez les relevés de notes de tout votre cursus post-baccalauréat, en un seul document. Le fichier téléversé doit avoir une taille maximale de 2 Mo. Les formats de fichiers supportés sont : JPEG, JPG, PNG, PDF.{"\n"}
-            Assurez-vous que le nom du fichier n'est pas trop long, ne contient que des caractères latins et ne contient pas de caractère accentué.
+            Assurez-vous que le nom du fichier n&apos;est pas trop long, ne contient que des caractères latins et ne contient pas de caractère accentué.
           </Text>
           <TouchableOpacity style={{ backgroundColor: '#fff', borderColor: mainColor, borderWidth: 1, borderRadius: 6, padding: 12, marginBottom: 10, alignItems: 'center', width: 180 }}>
             <Text style={{ color: mainColor, fontWeight: 'bold' }}>Importer</Text>
@@ -319,8 +383,8 @@ export default function Index() {
       return (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
-            <Image source={require('../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
-            <Image source={require('../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
           </View>
           <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 18 }}>Ajouter une expérience professionnelle</Text>
           <TouchableOpacity
@@ -329,7 +393,7 @@ export default function Index() {
           >
             <Text style={{ color: mainColor, marginRight: 8 }}>{noExperience ? '☑' : '☐'}</Text>
             <Text style={{ color: '#444', fontSize: 13 }}>
-              Je ne déclare aucune expérience professionnelle. En cochant cette case, je ne déclare aucune expérience professionnelle à prendre en compte par les établissements lors de l'examen de mes candidatures.
+              Je ne déclare aucune expérience professionnelle. En cochant cette case, je ne déclare aucune expérience professionnelle à prendre en compte par les établissements lors de l&apos;examen de mes candidatures.
             </Text>
           </TouchableOpacity>
           {noExperience ? (
@@ -338,7 +402,7 @@ export default function Index() {
             </TouchableOpacity>
           ) : (
             <>
-              <Text style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 16 }}>J'ajoute une expérience professionnelle</Text>
+              <Text style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 16 }}>J&apos;ajoute une expérience professionnelle</Text>
               <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Année du début*</Text>
               <TextInput placeholder="" style={inputStyle} />
               <Text style={{ fontWeight: 'bold', marginBottom: 4, marginTop: 12 }}>Durée en mois*</Text>
@@ -370,16 +434,16 @@ export default function Index() {
       return (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
-            <Image source={require('../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
-            <Image source={require('../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width:187.5, height: 100, resizeMode: 'contain', marginRight: 30 }} />
+            <Image source={require('../../assets/images/icon.png')} style={{ width: 340, height: 122, resizeMode: 'contain', marginRight: 30 }} />
           </View>
           <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 18 }}>Autres documents justificatifs</Text>
           <Text style={{ color: '#444', fontSize: 13, marginBottom: 12 }}>
-            Veuillez joindre les pièces justificatives suivantes à votre demande : une pièce d'identité en cours de validité ainsi que le dossier de validation dûment complété
+            Veuillez joindre les pièces justificatives suivantes à votre demande : une pièce d&apos;identité en cours de validité ainsi que le dossier de validation dûment complété
           </Text>
           <Text style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
             Le fichier téléversé doit avoir une taille maximale de 2 Mo. Les formats de fichiers supportés sont : JPEG, JPG, PNG, PDF.{"\n"}
-            Assurez-vous que le nom du fichier n'est pas trop long, ne contient que des caractères latins et ne contient pas de caractère accentué
+            Assurez-vous que le nom du fichier n&apos;est pas trop long, ne contient que des caractères latins et ne contient pas de caractère accentué
           </Text>
           <View style={{ flexDirection: 'row', marginBottom: 10, alignItems: 'center' }}>
             <TouchableOpacity style={{
@@ -469,24 +533,3 @@ export default function Index() {
     </View>
   );
 }
-
-const inputStyle = {
-  backgroundColor: '#F5F5F5',
-  borderRadius: 8,
-  paddingVertical: 10,
-  paddingHorizontal: 14,
-  marginBottom: 6,
-  fontSize: 15,
-  borderWidth: 0,
-};
-
-const mainColor = '#0C284F';
-const dateMenuStyle = {
-  borderWidth: 1,
-  borderColor: mainColor,
-  borderRadius: 6,
-  paddingVertical: 8,
-  paddingHorizontal: 10,
-  marginRight: 8,
-  backgroundColor: '#fff',
-};
