@@ -1,0 +1,1381 @@
+const sql = require('mssql');
+const express = require('express');
+const bodyParser = require('body-parser');
+const { connectDB, pool, poolConnect } = require('./db');
+const cors = require('cors');
+const axios = require('axios');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const redis = require('redis');
+const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config();
+
+const app = express();
+
+// JWT configuration
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+
+
+const redisClient = redis.createClient({
+  socket: {
+    host: process.env.REDIS_HOST || 'redis',
+    port: parseInt(process.env.REDIS_PORT) || 6379,
+  },
+  password: process.env.REDIS_PASSWORD || undefined,
+});
+
+redisClient.on('error', (err) => {
+  console.error('❌ Redis Client Error:', err);
+});
+
+redisClient.on('connect', () => {
+  console.log('✅ Connected to Redis');
+});
+
+redisClient.connect().catch(console.error);
+
+// Configure multer for file uploads
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const userDir = path.join(uploadDir, req.user.id.toString());
+    if (!fs.existsSync(userDir)) {
+      fs.mkdirSync(userDir, { recursive: true });
+    }
+    cb(null, userDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow common document formats
+    const allowedTypes = /pdf|doc|docx|jpg|jpeg|png|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Type de fichier non autorisé'));
+    }
+  }
+});
+
+// JWT middleware to verify token
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ message: 'Token d\'accès requis' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ message: 'Token invalide ou expiré' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Function to generate JWT token
+const generateToken = (user) => {
+  return jwt.sign(
+    { 
+      id: user.id_utilisateur, 
+      email: user.email, 
+      role: user.role,
+      type: user.type 
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+};
+
+// Idempotency middleware for signup
+const idempotencyMiddleware = async (req, res, next) => {
+  const idempotencyKey = req.headers['idempotency-key'] || req.headers['x-idempotency-key'];
+  
+  if (!idempotencyKey) {
+    return res.status(400).json({ 
+      message: 'Clé d\'idempotence requise. Incluez l\'en-tête "Idempotency-Key".' 
+    });
+  }
+
+  const redisKey = `signup:${idempotencyKey}`;
+  
+  try {
+    // Check if this request has been processed before
+    const existingResult = await redisClient.get(redisKey);
+    
+    if (existingResult) {
+      // Return the cached result
+      return res.json(JSON.parse(existingResult));
+    }
+    
+    // Store the idempotency key in req for later use
+    req.idempotencyKey = idempotencyKey;
+    req.redisKey = redisKey;
+    next();
+  } catch (err) {
+    console.error('Redis error in idempotency middleware:', err);
+    // Continue without idempotency if Redis fails
+    next();
+  }
+};
+
+// Helper function to cache signup result
+const cacheSignupResult = async (redisKey, result, ttl = 3600) => {
+  try {
+    await redisClient.setEx(redisKey, ttl, JSON.stringify(result));
+  } catch (err) {
+    console.error('Error caching signup result:', err);
+  }
+};
+
+app.use(cors());
+
+const PORT = process.env.PORT || 8081; 
+
+app.use(bodyParser.json());
+       
+connectDB();
+
+app.listen(PORT, () => {
+    console.log(`Serveur lancé sur le port ${PORT}`);
+});
+
+app.get('/miageconnect/api', (req, res) => {
+  res.send('API en ligne');
+});
+
+app.get('/miageconnect/api/utilisateurs', authenticateToken, async (req, res) => {
+    try {
+        await poolConnect;
+        const result = await pool.request()
+            .query('SELECT id_utilisateur, nom, prenom, email, role, type FROM Utilisateur');
+        res.json(result.recordset);
+    } catch (err) {
+        console.error('Erreur lors de la requête SQL :', err);
+        res.status(500).json({ message: 'Erreur interne du serveur' });
+    }
+});
+
+app.post('/miageconnect/api/login', async (req, res) => {
+  const { email, mot_de_passe } = req.body;
+
+  if (!email || !mot_de_passe) {
+    return res.status(400).json({ message: 'Champs manquants' });
+  }
+
+  try {
+    await poolConnect;
+
+    const result = await pool.request()
+      .input('email', email)
+      .query('SELECT * FROM Utilisateur WHERE email = @email');
+
+    if (result.recordset.length === 0) {
+      return res.status(400).json({ message: 'Email introuvable' });
+    }
+
+    const utilisateur = result.recordset[0];
+    const mot_de_passe_bdd = utilisateur.mot_de_passe;
+
+    // Use bcrypt to compare the provided password with the hashed password
+    const isPasswordValid = await bcrypt.compare(mot_de_passe, mot_de_passe_bdd);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Mot de passe incorrect' });
+    }
+
+    // Generate JWT token
+    const token = generateToken(utilisateur);
+
+    res.status(200).json({
+      message: 'Connexion réussie !',
+      token, // Send the token to the client
+      utilisateur: {
+        id: utilisateur.id_utilisateur,
+        nom: utilisateur.nom,
+        prenom: utilisateur.prenom,
+        email: utilisateur.email,
+        role: utilisateur.role,
+        type: utilisateur.type
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+app.post('/miageconnect/api/sign-up', idempotencyMiddleware, async (req, res) => {
+  const { nom, prenom, email, mot_de_passe, role, type, captchaToken } = req.body;
+
+  if (!nom || !prenom || !email || !mot_de_passe || !role || !type || !captchaToken) {
+    return res.status(400).json({ message: 'Champs manquants ou CAPTCHA manquant' });
+  }
+
+  // Verify reCAPTCHA
+  try {
+    const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+    if (!secretKey) {
+      return res.status(500).json({ message: 'Clé secrète reCAPTCHA manquante côté serveur' });
+    }
+    const verifyUrl = `https://www.google.com/recaptcha/api/siteverify`;
+    const response = await axios.post(verifyUrl, null, {
+      params: {
+        secret: secretKey,
+        response: captchaToken
+      }
+    });
+    if (!response.data.success) {
+      return res.status(400).json({ message: 'Échec de la vérification reCAPTCHA' });
+    }
+  } catch (err) {
+    console.error('Erreur lors de la vérification reCAPTCHA:', err);
+    return res.status(500).json({ message: 'Erreur lors de la vérification reCAPTCHA' });
+  }
+
+  try {
+    await poolConnect;
+
+    // Vérifier si l'email existe déjà
+    const checkResult = await pool.request()
+      .input('email', email)
+      .query('SELECT id_utilisateur FROM Utilisateur WHERE email = @email');
+
+    if (checkResult.recordset.length > 0) {
+      const errorResponse = { message: 'Email déjà utilisé' };
+      // Cache the error response for idempotency
+      if (req.idempotencyKey) {
+        await cacheSignupResult(req.redisKey, errorResponse, 1800); // Cache for 30 minutes
+      }
+      return res.status(409).json(errorResponse);
+    }
+
+    // Hash the password before storing it
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(mot_de_passe, saltRounds);
+
+    // Insérer le nouvel utilisateur avec role et type
+    await pool.request()
+      .input('nom', nom)
+      .input('prenom', prenom)
+      .input('email', email)
+      .input('mot_de_passe', hashedPassword)
+      .input('role', role)
+      .input('type', type)
+      .query(
+        `INSERT INTO Utilisateur (nom, prenom, email, mot_de_passe, role, type)
+         VALUES (@nom, @prenom, @email, @mot_de_passe, @role, @type)`
+      );
+
+    const successResponse = { message: 'Utilisateur créé avec succès' };
+    
+    // Cache the result in Redis with the idempotency key
+    if (req.idempotencyKey) {
+      await cacheSignupResult(req.redisKey, successResponse);
+    }
+
+    res.status(201).json(successResponse);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// Protected route to get current user profile
+app.get('/miageconnect/api/profile', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    const result = await pool.request()
+      .input('id_utilisateur', req.user.id)
+      .query('SELECT id_utilisateur, nom, prenom, email, role, type FROM Utilisateur WHERE id_utilisateur = @id_utilisateur');
+    
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ message: 'Utilisateur non trouvé' });
+    }
+    
+    res.json(result.recordset[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// Route to refresh JWT token
+app.post('/miageconnect/api/refresh-token', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    // Get fresh user data from database
+    const result = await pool.request()
+      .input('id_utilisateur', req.user.id)
+      .query('SELECT * FROM Utilisateur WHERE id_utilisateur = @id_utilisateur');
+    
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ message: 'Utilisateur non trouvé' });
+    }
+    
+    const utilisateur = result.recordset[0];
+    const newToken = generateToken(utilisateur);
+    
+    res.json({
+      message: 'Token rafraîchi avec succès',
+      token: newToken
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// Route to verify if token is valid
+app.get('/miageconnect/api/verify-token', authenticateToken, (req, res) => {
+  res.json({
+    message: 'Token valide',
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      role: req.user.role,
+      type: req.user.type
+    }
+  });
+});
+
+// Route to generate idempotency key for clients
+app.get('/miageconnect/api/generate-idempotency-key', (req, res) => {
+  const idempotencyKey = uuidv4();
+  res.json({
+    idempotencyKey: idempotencyKey,
+    expiresIn: '1 hour',
+    usage: 'Include this key in the "Idempotency-Key" header for signup requests'
+  });
+});
+
+// Route to check Redis connection status
+app.get('/miageconnect/api/redis-status', authenticateToken, async (req, res) => {
+  try {
+    await redisClient.ping();
+    res.json({ 
+      status: 'connected', 
+      message: 'Redis is connected and responding' 
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      status: 'disconnected', 
+      message: 'Redis connection failed',
+      error: err.message 
+    });
+  }
+});
+
+// ===== INSCRIPTION FORM API ENDPOINTS =====
+
+// GET user's personal information (Candidat table)
+app.get('/miageconnect/api/user/personal-info', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    const result = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query(`
+        SELECT 
+          c.civilite,
+          c.nom_jeune_fille as nom_naissance,
+          c.prenom,
+          c.nom_marital as nom_usage,
+          c.date_naissance,
+          c.pays_naissance,
+          c.departement_naissance,
+          c.ville_commune_naissance as ville_naissance,
+          c.adresse as adresse_actuelle,
+          c.ville as ville_actuelle,
+          c.nationalite,
+          c.pays_residence
+        FROM Candidat c 
+        WHERE c.utilisateur_id = @utilisateur_id
+      `);
+    
+    if (result.recordset.length === 0) {
+      return res.json(null); // No data yet
+    }
+    
+    res.json(result.recordset[0]);
+  } catch (err) {
+    console.error('Error fetching personal info:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// POST/PUT user's personal information
+app.post('/miageconnect/api/user/personal-info', authenticateToken, async (req, res) => {
+  const {
+    civilite,
+    nom_naissance,
+    prenom,
+    nom_usage,
+    date_naissance,
+    pays_naissance,
+    departement_naissance,
+    ville_naissance,
+    adresse_actuelle,
+    ville_actuelle,
+    nationalite,
+    pays_residence
+  } = req.body;
+
+  try {
+    await poolConnect;
+    
+    // Check if candidat record exists
+    const checkResult = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query('SELECT id_candidat FROM Candidat WHERE utilisateur_id = @utilisateur_id');
+    
+    if (checkResult.recordset.length === 0) {
+      // Create new candidat record
+      await pool.request()
+        .input('utilisateur_id', req.user.id)
+        .input('civilite', civilite)
+        .input('nom_jeune_fille', nom_naissance)
+        .input('prenom', prenom)
+        .input('nom_marital', nom_usage)
+        .input('date_naissance', date_naissance)
+        .input('pays_naissance', pays_naissance)
+        .input('departement_naissance', departement_naissance)
+        .input('ville_commune_naissance', ville_naissance)
+        .input('adresse', adresse_actuelle)
+        .input('ville', ville_actuelle)
+        .input('nationalite', nationalite)
+        .input('pays_residence', pays_residence)
+        .query(`
+          INSERT INTO Candidat (
+            utilisateur_id, civilite, nom_jeune_fille, prenom, nom_marital,
+            date_naissance, pays_naissance, departement_naissance, ville_commune_naissance,
+            adresse, ville, nationalite, pays_residence
+          ) VALUES (
+            @utilisateur_id, @civilite, @nom_jeune_fille, @prenom, @nom_marital,
+            @date_naissance, @pays_naissance, @departement_naissance, @ville_commune_naissance,
+            @adresse, @ville, @nationalite, @pays_residence
+          )
+        `);
+    } else {
+      // Update existing record
+      await pool.request()
+        .input('utilisateur_id', req.user.id)
+        .input('civilite', civilite)
+        .input('nom_jeune_fille', nom_naissance)
+        .input('prenom', prenom)
+        .input('nom_marital', nom_usage)
+        .input('date_naissance', date_naissance)
+        .input('pays_naissance', pays_naissance)
+        .input('departement_naissance', departement_naissance)
+        .input('ville_commune_naissance', ville_naissance)
+        .input('adresse', adresse_actuelle)
+        .input('ville', ville_actuelle)
+        .input('nationalite', nationalite)
+        .input('pays_residence', pays_residence)
+        .query(`
+          UPDATE Candidat SET
+            civilite = @civilite,
+            nom_jeune_fille = @nom_jeune_fille,
+            prenom = @prenom,
+            nom_marital = @nom_marital,
+            date_naissance = @date_naissance,
+            pays_naissance = @pays_naissance,
+            departement_naissance = @departement_naissance,
+            ville_commune_naissance = @ville_commune_naissance,
+            adresse = @adresse,
+            ville = @ville,
+            nationalite = @nationalite,
+            pays_residence = @pays_residence
+          WHERE utilisateur_id = @utilisateur_id
+        `);
+    }
+    
+    res.json({ message: 'Informations personnelles sauvegardées avec succès' });
+  } catch (err) {
+    console.error('Error saving personal info:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// GET user's contact information
+app.get('/miageconnect/api/user/contact-info', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    const result = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query(`
+        SELECT 
+          c.email,
+          c.telephone_fixe,
+          c.telephone_mobile as telephone,
+          c.adresse,
+          c.ville,
+          c.code_postal
+        FROM Candidat c 
+        WHERE c.utilisateur_id = @utilisateur_id
+      `);
+    
+    if (result.recordset.length === 0) {
+      return res.json(null);
+    }
+    
+    res.json(result.recordset[0]);
+  } catch (err) {
+    console.error('Error fetching contact info:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// POST/PUT user's contact information
+app.post('/miageconnect/api/user/contact-info', authenticateToken, async (req, res) => {
+  const { email, telephone_fixe, telephone, adresse, ville, code_postal } = req.body;
+
+  try {
+    await poolConnect;
+    
+    // Check if candidat record exists
+    const checkResult = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query('SELECT id_candidat FROM Candidat WHERE utilisateur_id = @utilisateur_id');
+    
+    if (checkResult.recordset.length === 0) {
+      // Create new candidat record with contact info only
+      await pool.request()
+        .input('utilisateur_id', req.user.id)
+        .input('email', email)
+        .input('telephone_fixe', telephone_fixe)
+        .input('telephone_mobile', telephone)
+        .input('adresse', adresse)
+        .input('ville', ville)
+        .input('code_postal', code_postal)
+        .query(`
+          INSERT INTO Candidat (
+            utilisateur_id, email, telephone_fixe, telephone_mobile, adresse, ville, code_postal
+          ) VALUES (
+            @utilisateur_id, @email, @telephone_fixe, @telephone_mobile, @adresse, @ville, @code_postal
+          )
+        `);
+    } else {
+      // Update existing record
+      await pool.request()
+        .input('utilisateur_id', req.user.id)
+        .input('email', email)
+        .input('telephone_fixe', telephone_fixe)
+        .input('telephone_mobile', telephone)
+        .input('adresse', adresse)
+        .input('ville', ville)
+        .input('code_postal', code_postal)
+        .query(`
+          UPDATE Candidat SET
+            email = @email,
+            telephone_fixe = @telephone_fixe,
+            telephone_mobile = @telephone_mobile,
+            adresse = @adresse,
+            ville = @ville,
+            code_postal = @code_postal
+          WHERE utilisateur_id = @utilisateur_id
+        `);
+    }
+    
+    res.json({ message: 'Informations de contact sauvegardées avec succès' });
+  } catch (err) {
+    console.error('Error saving contact info:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// GET user's academic background
+app.get('/miageconnect/api/user/academic-background', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    // First get candidat_id
+    const candidatResult = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query('SELECT id_candidat FROM Candidat WHERE utilisateur_id = @utilisateur_id');
+    
+    if (candidatResult.recordset.length === 0) {
+      return res.json(null);
+    }
+    
+    const candidat_id = candidatResult.recordset[0].id_candidat;
+    
+    const result = await pool.request()
+      .input('candidat_id', candidat_id)
+      .query(`
+        SELECT 
+          s.derniere_classe_suivie as niveau_post_bac,
+          s.derniere_formation_suivie as specialite,
+          s.organisme as etablissement,
+          s.formation_en_apprentissage,
+          CASE WHEN s.formation_en_apprentissage = 1 THEN 0 ELSE 1 END as diplome_francais
+        FROM Scolarite s 
+        WHERE s.candidat_id = @candidat_id
+      `);
+    
+    if (result.recordset.length === 0) {
+      return res.json(null);
+    }
+    
+    res.json(result.recordset[0]);
+  } catch (err) {
+    console.error('Error fetching academic background:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// POST/PUT user's academic background
+app.post('/miageconnect/api/user/academic-background', authenticateToken, async (req, res) => {
+  const { diplome_francais, niveau_post_bac, etablissement, specialite } = req.body;
+
+  try {
+    await poolConnect;
+    
+    // Get or create candidat_id
+    let candidatResult = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query('SELECT id_candidat FROM Candidat WHERE utilisateur_id = @utilisateur_id');
+    
+    let candidat_id;
+    if (candidatResult.recordset.length === 0) {
+      // Create candidat record first
+      const insertResult = await pool.request()
+        .input('utilisateur_id', req.user.id)
+        .query(`
+          INSERT INTO Candidat (utilisateur_id) 
+          OUTPUT INSERTED.id_candidat
+          VALUES (@utilisateur_id)
+        `);
+      candidat_id = insertResult.recordset[0].id_candidat;
+    } else {
+      candidat_id = candidatResult.recordset[0].id_candidat;
+    }
+    
+    // Check if scolarite record exists
+    const scolariteResult = await pool.request()
+      .input('candidat_id', candidat_id)
+      .query('SELECT id_scolarite FROM Scolarite WHERE candidat_id = @candidat_id');
+    
+    if (scolariteResult.recordset.length === 0) {
+      // Create new scolarite record
+      await pool.request()
+        .input('candidat_id', candidat_id)
+        .input('derniere_classe_suivie', niveau_post_bac)
+        .input('derniere_formation_suivie', specialite)
+        .input('organisme', etablissement)
+        .input('formation_en_apprentissage', !diplome_francais)
+        .query(`
+          INSERT INTO Scolarite (
+            candidat_id, derniere_classe_suivie, derniere_formation_suivie, organisme, formation_en_apprentissage
+          ) VALUES (
+            @candidat_id, @derniere_classe_suivie, @derniere_formation_suivie, @organisme, @formation_en_apprentissage
+          )
+        `);
+    } else {
+      // Update existing record
+      await pool.request()
+        .input('candidat_id', candidat_id)
+        .input('derniere_classe_suivie', niveau_post_bac)
+        .input('derniere_formation_suivie', specialite)
+        .input('organisme', etablissement)
+        .input('formation_en_apprentissage', !diplome_francais)
+        .query(`
+          UPDATE Scolarite SET
+            derniere_classe_suivie = @derniere_classe_suivie,
+            derniere_formation_suivie = @derniere_formation_suivie,
+            organisme = @organisme,
+            formation_en_apprentissage = @formation_en_apprentissage
+          WHERE candidat_id = @candidat_id
+        `);
+    }
+    
+    res.json({ message: 'Parcours académique sauvegardé avec succès' });
+  } catch (err) {
+    console.error('Error saving academic background:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// GET user's professional experiences
+app.get('/miageconnect/api/user/experiences', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    // First get candidat_id
+    const candidatResult = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query('SELECT id_candidat FROM Candidat WHERE utilisateur_id = @utilisateur_id');
+    
+    if (candidatResult.recordset.length === 0) {
+      return res.json([]);
+    }
+    
+    const candidat_id = candidatResult.recordset[0].id_candidat;
+    
+    const result = await pool.request()
+      .input('candidat_id', candidat_id)
+      .query(`
+        SELECT 
+          p.id_parcours as id,
+          p.annee_debut,
+          CASE 
+            WHEN p.annee_fin IS NOT NULL THEN ((p.annee_fin - p.annee_debut) * 12)
+            ELSE 12
+          END as duree_en_mois,
+          CASE 
+            WHEN p.tempsplein = 1 THEN 'plein'
+            WHEN p.tempspartiel = 1 THEN 'partiel'
+            ELSE 'plein'
+          END as temps_plein,
+          p.organisme as employeur,
+          p.poste_occupe as intitule,
+          p.secteurs_activites as descriptif
+        FROM ParcoursProfessionnel p 
+        WHERE p.candidat_id = @candidat_id
+        ORDER BY p.annee_debut DESC
+      `);
+    
+    res.json(result.recordset);
+  } catch (err) {
+    console.error('Error fetching experiences:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// POST new professional experience
+app.post('/miageconnect/api/user/experiences', authenticateToken, async (req, res) => {
+  const {
+    annee_debut,
+    duree_en_mois,
+    temps_plein,
+    employeur,
+    intitule,
+    descriptif
+  } = req.body;
+
+  try {
+    await poolConnect;
+    
+    // Get or create candidat_id
+    let candidatResult = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query('SELECT id_candidat FROM Candidat WHERE utilisateur_id = @utilisateur_id');
+    
+    let candidat_id;
+    if (candidatResult.recordset.length === 0) {
+      const insertResult = await pool.request()
+        .input('utilisateur_id', req.user.id)
+        .query(`
+          INSERT INTO Candidat (utilisateur_id) 
+          OUTPUT INSERTED.id_candidat
+          VALUES (@utilisateur_id)
+        `);
+      candidat_id = insertResult.recordset[0].id_candidat;
+    } else {
+      candidat_id = candidatResult.recordset[0].id_candidat;
+    }
+    
+    // Calculate end year
+    const annee_fin = annee_debut + Math.floor(duree_en_mois / 12);
+    
+    const result = await pool.request()
+      .input('candidat_id', candidat_id)
+      .input('annee_debut', annee_debut)
+      .input('annee_fin', annee_fin)
+      .input('tempsplein', temps_plein === 'plein')
+      .input('tempspartiel', temps_plein === 'partiel')
+      .input('organisme', employeur)
+      .input('poste_occupe', intitule)
+      .input('secteurs_activites', descriptif)
+      .input('a_exerce_activite', true)
+      .query(`
+        INSERT INTO ParcoursProfessionnel (
+          candidat_id, annee_debut, annee_fin, tempsplein, tempspartiel,
+          organisme, poste_occupe, secteurs_activites, a_exerce_activite
+        ) 
+        OUTPUT INSERTED.id_parcours
+        VALUES (
+          @candidat_id, @annee_debut, @annee_fin, @tempsplein, @tempspartiel,
+          @organisme, @poste_occupe, @secteurs_activites, @a_exerce_activite
+        )
+      `);
+    
+    res.status(201).json({ 
+      message: 'Expérience professionnelle ajoutée avec succès',
+      id: result.recordset[0].id_parcours
+    });
+  } catch (err) {
+    console.error('Error adding experience:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// PUT update professional experience
+app.put('/miageconnect/api/user/experiences/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const {
+    annee_debut,
+    duree_en_mois,
+    temps_plein,
+    employeur,
+    intitule,
+    descriptif
+  } = req.body;
+
+  try {
+    await poolConnect;
+    
+    // Calculate end year
+    const annee_fin = annee_debut + Math.floor(duree_en_mois / 12);
+    
+    await pool.request()
+      .input('id_parcours', id)
+      .input('annee_debut', annee_debut)
+      .input('annee_fin', annee_fin)
+      .input('tempsplein', temps_plein === 'plein')
+      .input('tempspartiel', temps_plein === 'partiel')
+      .input('organisme', employeur)
+      .input('poste_occupe', intitule)
+      .input('secteurs_activites', descriptif)
+      .query(`
+        UPDATE ParcoursProfessionnel SET
+          annee_debut = @annee_debut,
+          annee_fin = @annee_fin,
+          tempsplein = @tempsplein,
+          tempspartiel = @tempspartiel,
+          organisme = @organisme,
+          poste_occupe = @poste_occupe,
+          secteurs_activites = @secteurs_activites
+        WHERE id_parcours = @id_parcours
+      `);
+    
+    res.json({ message: 'Expérience professionnelle mise à jour avec succès' });
+  } catch (err) {
+    console.error('Error updating experience:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// DELETE professional experience
+app.delete('/miageconnect/api/user/experiences/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await poolConnect;
+    
+    await pool.request()
+      .input('id_parcours', id)
+      .query('DELETE FROM ParcoursProfessionnel WHERE id_parcours = @id_parcours');
+    
+    res.json({ message: 'Expérience professionnelle supprimée avec succès' });
+  } catch (err) {
+    console.error('Error deleting experience:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// GET user's documents
+app.get('/miageconnect/api/user/documents', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    // Get candidat_id and dossier_id
+    const candidatResult = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query(`
+        SELECT c.id_candidat, d.id_dossier
+        FROM Candidat c
+        LEFT JOIN DossierCandidature d ON c.id_candidat = d.candidat_id
+        WHERE c.utilisateur_id = @utilisateur_id
+      `);
+    
+    if (candidatResult.recordset.length === 0 || !candidatResult.recordset[0].id_dossier) {
+      return res.json([]);
+    }
+    
+    const dossier_id = candidatResult.recordset[0].id_dossier;
+    
+    const result = await pool.request()
+      .input('dossier_id', dossier_id)
+      .query(`
+        SELECT 
+          p.id_piece as id,
+          p.type as document_type,
+          p.nom as file_name,
+          p.chemin_fichier as file_path,
+          p.description as commentaire,
+          p.date_depot as created_at,
+          p.valide
+        FROM PieceJustificative p 
+        WHERE p.dossier_id = @dossier_id
+        ORDER BY p.date_depot DESC
+      `);
+    
+    res.json(result.recordset);
+  } catch (err) {
+    console.error('Error fetching documents:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// DELETE document
+app.delete('/miageconnect/api/user/documents/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await poolConnect;
+    
+    await pool.request()
+      .input('id_piece', id)
+      .query('DELETE FROM PieceJustificative WHERE id_piece = @id_piece');
+    
+    res.json({ message: 'Document supprimé avec succès' });
+  } catch (err) {
+    console.error('Error deleting document:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// GET form progress tracking
+app.get('/miageconnect/api/user/form-progress', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    // Check what data exists for the user
+    const result = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query(`
+        SELECT 
+          CASE WHEN c.civilite IS NOT NULL THEN 1 ELSE 0 END as infos_completed,
+          CASE WHEN c.email IS NOT NULL THEN 1 ELSE 0 END as coordonnees_completed,
+          CASE WHEN s.id_scolarite IS NOT NULL THEN 1 ELSE 0 END as parcours_completed,
+          CASE WHEN EXISTS(SELECT 1 FROM ParcoursProfessionnel pp WHERE pp.candidat_id = c.id_candidat) THEN 1 ELSE 0 END as experiences_completed,
+          CASE WHEN EXISTS(
+            SELECT 1 FROM PieceJustificative pj 
+            INNER JOIN DossierCandidature dc ON pj.dossier_id = dc.id_dossier 
+            WHERE dc.candidat_id = c.id_candidat AND pj.type = 'cv'
+          ) THEN 1 ELSE 0 END as cv_completed,
+          CASE WHEN EXISTS(
+            SELECT 1 FROM PieceJustificative pj 
+            INNER JOIN DossierCandidature dc ON pj.dossier_id = dc.id_dossier 
+            WHERE dc.candidat_id = c.id_candidat AND pj.type = 'notes'
+          ) THEN 1 ELSE 0 END as notes_completed,
+          CASE WHEN EXISTS(
+            SELECT 1 FROM PieceJustificative pj 
+            INNER JOIN DossierCandidature dc ON pj.dossier_id = dc.id_dossier 
+            WHERE dc.candidat_id = c.id_candidat AND pj.type = 'justificatifs'
+          ) THEN 1 ELSE 0 END as justificatifs_completed
+        FROM Candidat c
+        LEFT JOIN Scolarite s ON c.id_candidat = s.candidat_id
+        WHERE c.utilisateur_id = @utilisateur_id
+      `);
+    
+    if (result.recordset.length === 0) {
+      // No data yet
+      return res.json({
+        infos_completed: false,
+        coordonnees_completed: false,
+        cv_completed: false,
+        parcours_completed: false,
+        notes_completed: false,
+        experiences_completed: false,
+        justificatifs_completed: false,
+        last_updated: null
+      });
+    }
+    
+    const progress = result.recordset[0];
+    res.json({
+      infos_completed: !!progress.infos_completed,
+      coordonnees_completed: !!progress.coordonnees_completed,
+      cv_completed: !!progress.cv_completed,
+      parcours_completed: !!progress.parcours_completed,
+      notes_completed: !!progress.notes_completed,
+      experiences_completed: !!progress.experiences_completed,
+      justificatifs_completed: !!progress.justificatifs_completed,
+      last_updated: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error fetching form progress:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// ===== END INSCRIPTION FORM API ENDPOINTS =====
+
+// POST upload documents
+app.post('/miageconnect/api/user/documents/upload', authenticateToken, upload.single('document'), async (req, res) => {
+  const { document_type, commentaire } = req.body;
+  
+  if (!req.file) {
+    return res.status(400).json({ message: 'Aucun fichier fourni' });
+  }
+
+  try {
+    await poolConnect;
+    
+    // Get or create candidat and dossier
+    let candidatResult = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query('SELECT id_candidat FROM Candidat WHERE utilisateur_id = @utilisateur_id');
+    
+    let candidat_id;
+    if (candidatResult.recordset.length === 0) {
+      const insertResult = await pool.request()
+        .input('utilisateur_id', req.user.id)
+        .query(`
+          INSERT INTO Candidat (utilisateur_id) 
+          OUTPUT INSERTED.id_candidat
+          VALUES (@utilisateur_id)
+        `);
+      candidat_id = insertResult.recordset[0].id_candidat;
+    } else {
+      candidat_id = candidatResult.recordset[0].id_candidat;
+    }
+    
+    // Get or create dossier
+    let dossierResult = await pool.request()
+      .input('candidat_id', candidat_id)
+      .query('SELECT id_dossier FROM DossierCandidature WHERE candidat_id = @candidat_id');
+    
+    let dossier_id;
+    if (dossierResult.recordset.length === 0) {
+      const insertDossierResult = await pool.request()
+        .input('candidat_id', candidat_id)
+        .input('date_creation', new Date())
+        .input('statut', 'en_cours')
+        .query(`
+          INSERT INTO DossierCandidature (candidat_id, date_creation, statut)
+          OUTPUT INSERTED.id_dossier
+          VALUES (@candidat_id, @date_creation, @statut)
+        `);
+      dossier_id = insertDossierResult.recordset[0].id_dossier;
+    } else {
+      dossier_id = dossierResult.recordset[0].id_dossier;
+    }
+    
+    // Save file information to database
+    const relativePath = path.relative(__dirname, req.file.path);
+    const result = await pool.request()
+      .input('dossier_id', dossier_id)
+      .input('nom', req.file.originalname)
+      .input('description', commentaire || '')
+      .input('type', document_type)
+      .input('date_depot', new Date())
+      .input('chemin_fichier', relativePath)
+      .input('valide', false)
+      .query(`
+        INSERT INTO PieceJustificative (
+          dossier_id, nom, description, type, date_depot, chemin_fichier, valide
+        )
+        OUTPUT INSERTED.id_piece
+        VALUES (
+          @dossier_id, @nom, @description, @type, @date_depot, @chemin_fichier, @valide
+        )
+      `);
+    
+    res.status(201).json({
+      message: 'Document téléchargé avec succès',
+      id: result.recordset[0].id_piece,
+      file_name: req.file.originalname,
+      document_type: document_type
+    });
+  } catch (err) {
+    // Clean up uploaded file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    console.error('Error uploading document:', err);
+    res.status(500).json({ message: 'Erreur lors du téléchargement du document' });
+  }
+});
+
+// GET download document
+app.get('/miageconnect/api/user/documents/:id/download', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await poolConnect;
+    
+    // Verify user owns this document
+    const result = await pool.request()
+      .input('id_piece', id)
+      .input('utilisateur_id', req.user.id)
+      .query(`
+        SELECT p.chemin_fichier, p.nom, p.type
+        FROM PieceJustificative p
+        INNER JOIN DossierCandidature d ON p.dossier_id = d.id_dossier
+        INNER JOIN Candidat c ON d.candidat_id = c.id_candidat
+        WHERE p.id_piece = @id_piece AND c.utilisateur_id = @utilisateur_id
+      `);
+    
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ message: 'Document non trouvé' });
+    }
+    
+    const document = result.recordset[0];
+    const filePath = path.join(__dirname, document.chemin_fichier);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'Fichier non trouvé sur le serveur' });
+    }
+    
+    res.download(filePath, document.nom);
+  } catch (err) {
+    console.error('Error downloading document:', err);
+    res.status(500).json({ message: 'Erreur lors du téléchargement du document' });
+  }
+});
+
+// ===== REFERENCE DATA ENDPOINTS =====
+
+// GET countries (mock data - you can replace with real data from your DB)
+app.get('/miageconnect/api/reference/countries', (req, res) => {
+  const countries = [
+    { id: 1, name: 'France', code: 'FR' },
+    { id: 2, name: 'Allemagne', code: 'DE' },
+    { id: 3, name: 'Espagne', code: 'ES' },
+    { id: 4, name: 'Italie', code: 'IT' },
+    { id: 5, name: 'Belgique', code: 'BE' },
+    { id: 6, name: 'Suisse', code: 'CH' },
+    { id: 7, name: 'Portugal', code: 'PT' },
+    { id: 8, name: 'Pays-Bas', code: 'NL' },
+    { id: 9, name: 'Royaume-Uni', code: 'GB' },
+    { id: 10, name: 'États-Unis', code: 'US' },
+    { id: 11, name: 'Canada', code: 'CA' },
+    { id: 12, name: 'Maroc', code: 'MA' },
+    { id: 13, name: 'Tunisie', code: 'TN' },
+    { id: 14, name: 'Algérie', code: 'DZ' }
+  ];
+  res.json(countries);
+});
+
+// GET departments (French departments)
+app.get('/miageconnect/api/reference/departments', (req, res) => {
+  const departments = [
+    { id: 1, name: 'Ain', country_id: 1 },
+    { id: 2, name: 'Aisne', country_id: 1 },
+    { id: 3, name: 'Allier', country_id: 1 },
+    { id: 4, name: 'Alpes-de-Haute-Provence', country_id: 1 },
+    { id: 5, name: 'Hautes-Alpes', country_id: 1 },
+    { id: 6, name: 'Alpes-Maritimes', country_id: 1 },
+    { id: 7, name: 'Ardèche', country_id: 1 },
+    { id: 8, name: 'Ardennes', country_id: 1 },
+    { id: 9, name: 'Ariège', country_id: 1 },
+    { id: 10, name: 'Aube', country_id: 1 },
+    { id: 11, name: 'Aude', country_id: 1 },
+    { id: 12, name: 'Aveyron', country_id: 1 },
+    { id: 13, name: 'Bouches-du-Rhône', country_id: 1 },
+    { id: 14, name: 'Calvados', country_id: 1 },
+    { id: 15, name: 'Cantal', country_id: 1 },
+    { id: 16, name: 'Charente', country_id: 1 },
+    { id: 17, name: 'Charente-Maritime', country_id: 1 },
+    { id: 18, name: 'Cher', country_id: 1 },
+    { id: 19, name: 'Corrèze', country_id: 1 },
+    { id: 20, name: 'Corse-du-Sud', country_id: 1 },
+    { id: 21, name: 'Haute-Corse', country_id: 1 },
+    { id: 22, name: 'Côte-d\'Or', country_id: 1 },
+    { id: 23, name: 'Côtes-d\'Armor', country_id: 1 },
+    { id: 24, name: 'Creuse', country_id: 1 },
+    { id: 25, name: 'Dordogne', country_id: 1 },
+    { id: 26, name: 'Doubs', country_id: 1 },
+    { id: 27, name: 'Drôme', country_id: 1 },
+    { id: 28, name: 'Eure', country_id: 1 },
+    { id: 29, name: 'Eure-et-Loir', country_id: 1 },
+    { id: 30, name: 'Finistère', country_id: 1 },
+    { id: 31, name: 'Gard', country_id: 1 },
+    { id: 32, name: 'Haute-Garonne', country_id: 1 },
+    { id: 33, name: 'Gers', country_id: 1 },
+    { id: 34, name: 'Gironde', country_id: 1 },
+    { id: 35, name: 'Hérault', country_id: 1 },
+    { id: 36, name: 'Ille-et-Vilaine', country_id: 1 },
+    { id: 37, name: 'Indre', country_id: 1 },
+    { id: 38, name: 'Indre-et-Loire', country_id: 1 },
+    { id: 39, name: 'Isère', country_id: 1 },
+    { id: 40, name: 'Jura', country_id: 1 },
+    { id: 41, name: 'Landes', country_id: 1 },
+    { id: 42, name: 'Loir-et-Cher', country_id: 1 },
+    { id: 43, name: 'Loire', country_id: 1 },
+    { id: 44, name: 'Haute-Loire', country_id: 1 },
+    { id: 45, name: 'Loire-Atlantique', country_id: 1 },
+    { id: 46, name: 'Loiret', country_id: 1 },
+    { id: 47, name: 'Lot', country_id: 1 },
+    { id: 48, name: 'Lot-et-Garonne', country_id: 1 },
+    { id: 49, name: 'Lozère', country_id: 1 },
+    { id: 50, name: 'Maine-et-Loire', country_id: 1 },
+    { id: 51, name: 'Manche', country_id: 1 },
+    { id: 52, name: 'Marne', country_id: 1 },
+    { id: 53, name: 'Haute-Marne', country_id: 1 },
+    { id: 54, name: 'Mayenne', country_id: 1 },
+    { id: 55, name: 'Meurthe-et-Moselle', country_id: 1 },
+    { id: 56, name: 'Meuse', country_id: 1 },
+    { id: 57, name: 'Morbihan', country_id: 1 },
+    { id: 58, name: 'Moselle', country_id: 1 },
+    { id: 59, name: 'Nièvre', country_id: 1 },
+    { id: 60, name: 'Nord', country_id: 1 },
+    { id: 61, name: 'Oise', country_id: 1 },
+    { id: 62, name: 'Orne', country_id: 1 },
+    { id: 63, name: 'Pas-de-Calais', country_id: 1 },
+    { id: 64, name: 'Puy-de-Dôme', country_id: 1 },
+    { id: 65, name: 'Pyrénées-Atlantiques', country_id: 1 },
+    { id: 66, name: 'Hautes-Pyrénées', country_id: 1 },
+    { id: 67, name: 'Pyrénées-Orientales', country_id: 1 },
+    { id: 68, name: 'Bas-Rhin', country_id: 1 },
+    { id: 69, name: 'Haut-Rhin', country_id: 1 },
+    { id: 70, name: 'Rhône', country_id: 1 },
+    { id: 71, name: 'Haute-Saône', country_id: 1 },
+    { id: 72, name: 'Saône-et-Loire', country_id: 1 },
+    { id: 73, name: 'Sarthe', country_id: 1 },
+    { id: 74, name: 'Savoie', country_id: 1 },
+    { id: 75, name: 'Haute-Savoie', country_id: 1 },
+    { id: 76, name: 'Paris', country_id: 1 },
+    { id: 77, name: 'Seine-et-Marne', country_id: 1 },
+    { id: 78, name: 'Yvelines', country_id: 1 },
+    { id: 79, name: 'Deux-Sèvres', country_id: 1 },
+    { id: 80, name: 'Somme', country_id: 1 },
+    { id: 81, name: 'Tarn', country_id: 1 },
+    { id: 82, name: 'Tarn-et-Garonne', country_id: 1 },
+    { id: 83, name: 'Var', country_id: 1 },
+    { id: 84, name: 'Vaucluse', country_id: 1 },
+    { id: 85, name: 'Vendée', country_id: 1 },
+    { id: 86, name: 'Vienne', country_id: 1 },
+    { id: 87, name: 'Haute-Vienne', country_id: 1 },
+    { id: 88, name: 'Vosges', country_id: 1 },
+    { id: 89, name: 'Yonne', country_id: 1 },
+    { id: 90, name: 'Territoire de Belfort', country_id: 1 },
+    { id: 91, name: 'Essonne', country_id: 1 },
+    { id: 92, name: 'Hauts-de-Seine', country_id: 1 },
+    { id: 93, name: 'Seine-Saint-Denis', country_id: 1 },
+    { id: 94, name: 'Val-de-Marne', country_id: 1 },
+    { id: 95, name: 'Val-d\'Oise', country_id: 1 }
+  ];
+  res.json(departments);
+});
+
+// GET cities (sample cities for major departments)
+app.get('/miageconnect/api/reference/cities', (req, res) => {
+  const { department_id } = req.query;
+  
+  // Sample cities data - you can expand this or connect to a real cities database
+  const cities = [
+    // Paris (76)
+    { id: 1, name: 'Paris 1er', department_id: 76 },
+    { id: 2, name: 'Paris 2e', department_id: 76 },
+    { id: 3, name: 'Paris 3e', department_id: 76 },
+    { id: 4, name: 'Paris 4e', department_id: 76 },
+    { id: 5, name: 'Paris 5e', department_id: 76 },
+    { id: 6, name: 'Paris 6e', department_id: 76 },
+    { id: 7, name: 'Paris 7e', department_id: 76 },
+    { id: 8, name: 'Paris 8e', department_id: 76 },
+    { id: 9, name: 'Paris 9e', department_id: 76 },
+    { id: 10, name: 'Paris 10e', department_id: 76 },
+    { id: 11, name: 'Paris 11e', department_id: 76 },
+    { id: 12, name: 'Paris 12e', department_id: 76 },
+    { id: 13, name: 'Paris 13e', department_id: 76 },
+    { id: 14, name: 'Paris 14e', department_id: 76 },
+    { id: 15, name: 'Paris 15e', department_id: 76 },
+    { id: 16, name: 'Paris 16e', department_id: 76 },
+    { id: 17, name: 'Paris 17e', department_id: 76 },
+    { id: 18, name: 'Paris 18e', department_id: 76 },
+    { id: 19, name: 'Paris 19e', department_id: 76 },
+    { id: 20, name: 'Paris 20e', department_id: 76 },
+    
+    // Rhône (70)
+    { id: 21, name: 'Lyon', department_id: 70 },
+    { id: 22, name: 'Villeurbanne', department_id: 70 },
+    { id: 23, name: 'Vénissieux', department_id: 70 },
+    { id: 24, name: 'Caluire-et-Cuire', department_id: 70 },
+    { id: 25, name: 'Bron', department_id: 70 },
+    
+    // Bouches-du-Rhône (13)
+    { id: 26, name: 'Marseille', department_id: 13 },
+    { id: 27, name: 'Aix-en-Provence', department_id: 13 },
+    { id: 28, name: 'Toulon', department_id: 13 },
+    { id: 29, name: 'Avignon', department_id: 13 },
+    
+    // Nord (60)
+    { id: 30, name: 'Lille', department_id: 60 },
+    { id: 31, name: 'Roubaix', department_id: 60 },
+    { id: 32, name: 'Tourcoing', department_id: 60 },
+    { id: 33, name: 'Dunkerque', department_id: 60 },
+    
+    // Haute-Garonne (32)
+    { id: 34, name: 'Toulouse', department_id: 32 },
+    { id: 35, name: 'Colomiers', department_id: 32 },
+    { id: 36, name: 'Tournefeuille', department_id: 32 },
+    { id: 37, name: 'Muret', department_id: 32 }
+  ];
+  
+  if (department_id) {
+    const filteredCities = cities.filter(city => city.department_id == department_id);
+    res.json(filteredCities);
+  } else {
+    res.json(cities);
+  }
+});
+
+// Helper endpoint to get candidate's current status
+app.get('/miageconnect/api/user/application-status', authenticateToken, async (req, res) => {
+  try {
+    await poolConnect;
+    
+    const result = await pool.request()
+      .input('utilisateur_id', req.user.id)
+      .query(`
+        SELECT 
+          d.statut,
+          d.date_creation,
+          d.date_validation,
+          c.id_candidat
+        FROM Candidat c
+        LEFT JOIN DossierCandidature d ON c.id_candidat = d.candidat_id
+        WHERE c.utilisateur_id = @utilisateur_id
+      `);
+    
+    if (result.recordset.length === 0) {
+      return res.json({
+        status: 'not_started',
+        has_candidat_record: false,
+        has_dossier: false
+      });
+    }
+    
+    const data = result.recordset[0];
+    res.json({
+      status: data.statut || 'not_started',
+      has_candidat_record: !!data.id_candidat,
+      has_dossier: !!data.statut,
+      date_creation: data.date_creation,
+      date_validation: data.date_validation
+    });
+  } catch (err) {
+    console.error('Error fetching application status:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});

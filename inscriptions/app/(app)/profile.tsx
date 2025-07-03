@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSession, useUserData } from "../../Session/ctx";
 
 const PRIMARY = "#2563EB";
 const SECONDARY = "#3B82F6";
@@ -19,11 +20,6 @@ const CIRCLE_ACTIVE = PRIMARY;
 const CIRCLE_INACTIVE = "#e5e7eb";
 const TEXT_PRIMARY = "#1e293b";
 const TEXT_SECONDARY = "#64748b";
-
-const USER = {
-  name: "Jean Dupont",
-  avatar: require("../../assets/images/miage-logo.png"),
-};
 
 const ETAPES = [
   { label: "Infos", icon: "person" },
@@ -50,6 +46,9 @@ function getEtapeActuelle(statut: string) {
 }
 
 export default function Profile() {
+  const { signOut, token } = useSession();
+  const { user, isLoading, refreshUserData } = useUserData();
+  const [refreshing, setRefreshing] = useState(false);
   const statut = "En analyse";
   const etapeActuelle = getEtapeActuelle(statut) - 1;
   const actions = [
@@ -64,18 +63,134 @@ export default function Profile() {
 
   const [chatbotVisible, setChatbotVisible] = useState(false);
 
+  const handleLogout = () => {
+    signOut();
+  };
+
+  const handleRefreshUserData = async () => {
+    setRefreshing(true);
+    try {
+      refreshUserData();
+      // Add a small delay for better UX
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Get user display name with better fallback handling
+  const getUserDisplayName = () => {
+    if (isLoading) return "Chargement...";
+    
+    if (user?.nom && user?.prenom) {
+      return `${user.prenom} ${user.nom}`;
+    } else if (user?.nom) {
+      return user.nom;
+    } else if (user?.prenom) {
+      return user.prenom;
+    } else if (user?.email) {
+      return user.email.split('@')[0];
+    }
+    return "Utilisateur";
+  };
+
+  // Show loading state if user data is being loaded
+  if (isLoading) {
+    return (
+      <View style={[styles.card, { margin: 20, alignItems: 'center' }]}>
+        <Text style={styles.cardTitle}>Chargement des données utilisateur...</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: PASTEL_BG }} contentContainerStyle={{ paddingBottom: 32 }}>
       {/* Header */}
       <View style={styles.headerContainer}>
         <View style={styles.headerLeft}>
-          <Image source={USER.avatar} style={styles.avatar} />
+          <Image source={require("../../assets/images/miage-logo.png")} style={styles.avatar} />
           <View>
             <Text style={styles.greeting}>Bonjour,</Text>
-            <Text style={styles.userName}>{USER.name}</Text>
+            <Text style={styles.userName}>{getUserDisplayName()}</Text>
             <Text style={styles.profileSubtitle}>Candidature MIAGE L3 – Année 2025–2026</Text>
           </View>
         </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity 
+            style={[styles.logoutButton, { backgroundColor: '#f0f9ff' }]} 
+            onPress={handleRefreshUserData}
+            disabled={refreshing}
+            activeOpacity={0.8}
+          >
+            <Ionicons 
+              name={refreshing ? "refresh" : "refresh-outline"} 
+              size={20} 
+              color={PRIMARY} 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
+            <Ionicons name="log-out-outline" size={24} color={CTA} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* User Info Card with enhanced data display */}
+      <View style={styles.card}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={styles.cardTitle}>Informations utilisateur</Text>
+          {refreshing && (
+            <Text style={[styles.userInfoLabel, { color: PRIMARY }]}>Actualisation...</Text>
+          )}
+        </View>
+        
+        {user ? (
+          <>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>ID:</Text>
+              <Text style={styles.userInfoValue}>{user.id}</Text>
+            </View>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Email:</Text>
+              <Text style={styles.userInfoValue}>{user.email}</Text>
+            </View>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Nom:</Text>
+              <Text style={styles.userInfoValue}>{user.nom || "Non renseigné"}</Text>
+            </View>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Prénom:</Text>
+              <Text style={styles.userInfoValue}>{user.prenom || "Non renseigné"}</Text>
+            </View>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Rôle:</Text>
+              <Text style={styles.userInfoValue}>{user.role || "Non défini"}</Text>
+            </View>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Type:</Text>
+              <Text style={styles.userInfoValue}>{user.type || "Non défini"}</Text>
+            </View>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Token:</Text>
+              <Text style={styles.userInfoValue} numberOfLines={1} ellipsizeMode="tail">
+                {token ? `${token.substring(0, 20)}...` : "Non disponible"}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <View style={{ alignItems: 'center', padding: 20 }}>
+            <Text style={[styles.userInfoLabel, { textAlign: 'center' }]}>
+              Aucune donnée utilisateur disponible
+            </Text>
+            <TouchableOpacity 
+              style={[styles.checklistBtn, { marginTop: 10 }]} 
+              onPress={handleRefreshUserData}
+            >
+              <Text style={{ color: '#fff', fontSize: 12 }}>Actualiser</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Global Progress Bar */}
@@ -203,6 +318,13 @@ const styles = StyleSheet.create({
     paddingTop: 32,
     paddingBottom: 12,
     backgroundColor: PASTEL_BG,
+  },
+  logoutButton: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
   },
   headerLeft: {
     flexDirection: "row",
@@ -448,5 +570,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#fff",
     fontWeight: "bold",
+  },
+  userInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    paddingVertical: 4,
+  },
+  userInfoLabel: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    fontWeight: "bold",
+    width: 80,
+    marginRight: 8,
+  },
+  userInfoValue: {
+    fontSize: 14,
+    color: TEXT_PRIMARY,
+    flex: 1,
   },
 });

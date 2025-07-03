@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { useSession } from '../../Session/ctx';
 
 const PRIMARY = '#2563EB';
 const CIRCLE_INACTIVE = '#e5e7eb';
@@ -83,6 +84,25 @@ const FAQ = [
 
 export default function HelpScreen() {
   const [selected, setSelected] = useState<{cat: number, q: number} | null>(null);
+  const { signOut, user } = useSession();
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Déconnexion',
+      'Êtes-vous sûr de vouloir vous déconnecter ?',
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+        {
+          text: 'Déconnexion',
+          style: 'destructive',
+          onPress: () => signOut(),
+        },
+      ]
+    );
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ alignItems: 'center', paddingBottom: 40 }}>
@@ -120,6 +140,24 @@ export default function HelpScreen() {
             ))}
           </View>
         ))}
+        
+        {/* Logout Section */}
+        <View style={styles.logoutSection}>
+          <View style={styles.userInfo}>
+            <Ionicons name="person-circle-outline" size={24} color={TEXT_SECONDARY} />
+            <Text style={styles.userText}>
+              {user ? `${user.prenom} ${user.nom}` : 'Utilisateur'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            activeOpacity={0.7}
+            onPress={handleLogout}
+          >
+            <Ionicons name="log-out-outline" size={20} color="#dc2626" />
+            <Text style={styles.logoutText}>Se déconnecter</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );
@@ -193,5 +231,43 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: TEXT_PRIMARY,
     lineHeight: 20,
+  },
+  logoutSection: {
+    marginTop: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: CIRCLE_INACTIVE,
+  },
+  logoutDivider: {
+    height: 1,
+    backgroundColor: CIRCLE_INACTIVE,
+    marginBottom: 16,
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  userText: {
+    fontSize: 14,
+    color: TEXT_PRIMARY,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  logoutText: {
+    fontSize: 14,
+    color: '#dc2626',
+    fontWeight: '600',
+    marginLeft: 8,
   },
 }); 

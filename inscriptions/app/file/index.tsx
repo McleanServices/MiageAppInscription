@@ -1,7 +1,6 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from "@react-native-picker/picker";
-import * as DocumentPicker from "expo-document-picker";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -14,6 +13,11 @@ import {
   View
 } from "react-native";
 import StepHeader from "../../components/StepHeader";
+import { useFormData } from "../../utils/hooks/useFormData";
+import { useDocumentPicker } from "../../utils/hooks/useDocumentPicker";
+import { useExperienceForm } from "../../utils/hooks/useExperienceForm";
+import { useDatePicker } from "../../utils/hooks/useDatePicker";
+import { useLocationData } from "../../utils/hooks/useLocationData";
 
 // Couleurs principales
 const mainBlue = "#1A2341";
@@ -32,92 +36,74 @@ const PAGES = [
   { key: "justificatifs", label: "Autres documents justificatifs" },
 ];
 
-const countries = [
-  "France"
-];
-
-const guadeloupeDepartments = [
-  "Guadeloupe",
-
-];
-
-const guadeloupeCities = [
-  "Basse-Terre",
-  "Pointe-à-Pitre",
-  "Les Abymes",
-  "Baie-Mahault",
-  "Le Gosier",
-  "Petit-Bourg",
-  "Sainte-Anne",
-  "Capesterre-Belle-Eau",
-  "Lamentin",
-  "Gourbeyre",
-  "Bouillante",
-  "Deshaies",
-  "Terre-de-Haut",
-  "Terre-de-Bas",
-  "Vieux-Habitants",
-  "Trois-Rivières",
-  "Goyave",
-  "Petit-Canal",
-  "Anse-Bertrand",
-  "Port-Louis",
-  "Le Moule",
-  "Saint-François",
-  "Sainte-Rose",
-  "Pointe-Noire"
-];
-
 export default function InscriptionScreen() {
   const [currentPage, setCurrentPage] = useState(0);
   const [civilite, setCivilite] = useState("");
   const [nom, setNom] = useState("");
   const [prenom, setPrenom] = useState("");
   const [nomUsage, setNomUsage] = useState("");
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [birthDay, setBirthDay] = useState<string>("");
-  const [birthMonth, setBirthMonth] = useState<string>("");
-  const [birthYear, setBirthYear] = useState<string>("");
-  const [birthCountry, setBirthCountry] = useState<string>("");
-  const [cvFile, setCvFile] =
-    useState<DocumentPicker.DocumentPickerAsset | null>(null);
-  const [notesFile, setNotesFile] =
-    useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [notesOption, setNotesOption] = useState<string>("");
   const [diplomeFrancais, setDiplomeFrancais] = useState<string>("");
-  const [tempsTravail, setTempsTravail] = useState<string>("");
-  const [experiences, setExperiences] = useState<Array<{
-    id: string;
-    anneeDebut: string;
-    dureeEnMois: string;
-    tempsPlein: string;
-    employeur: string;
-    intitule: string;
-    descriptif: string;
-  }>>([]);
-  const [showExperienceForm, setShowExperienceForm] = useState(false);
-  const [editingExperience, setEditingExperience] = useState<string | null>(null);
-  const [currentExperience, setCurrentExperience] = useState({
-    anneeDebut: '',
-    dureeEnMois: '',
-    tempsPlein: '',
-    employeur: '',
-    intitule: '',
-    descriptif: ''
-  });
-  const [aucuneExperience, setAucuneExperience] = useState(false);
-  const [showCountryModal, setShowCountryModal] = useState(false);
-  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false);
-  const [departmentInput, setDepartmentInput] = useState("");
-  const [showDepartmentSuggestions, setShowDepartmentSuggestions] = useState(false);
-  const [selectedDepartment, setSelectedDepartment] = useState("");
-  const [countryInput, setCountryInput] = useState("");
-  const [showCountrySuggestions, setShowCountrySuggestions] = useState(false);
-  const [birthCityInput, setBirthCityInput] = useState("");
-  const [showBirthCitySuggestions, setShowBirthCitySuggestions] = useState(false);
-  const [currentCityInput, setCurrentCityInput] = useState("");
-  const [showCurrentCitySuggestions, setShowCurrentCitySuggestions] = useState(false);
+  
+  // Add local state for address fields that should not be overwritten by location hook
+  const [adresse, setAdresse] = useState("");
+
+  // Add a flag to track if data has been loaded initially
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Use custom hooks
+  const { loading, error, setError, fetchPersonalInfo, savePersonalInfo, fetchContactInfo, saveContactInfo, fetchAcademicBackground, saveAcademicBackground, fetchExperiences, saveExperience } = useFormData();
+  
+  const { cvFile, notesFile, justificatifsFile, uploading, uploadSuccess, uploadError, handleImportCV, handleImportNotes, handleImportJustificatifs, clearCvFile, clearNotesFile, clearJustificatifsFile, retryUpload, clearMessages } = useDocumentPicker();
+  
+  const { experiences, setExperiences, showExperienceForm, setShowExperienceForm, editingExperience, currentExperience, setCurrentExperience, aucuneExperience, addExperience, editExperience, deleteExperience, cancelExperienceForm, handleAucuneExperience } = useExperienceForm();
+  
+  const { selectedDate, setSelectedDate, showDatePicker, setShowDatePicker, handleDateChange, confirmIOSDate, formatDate } = useDatePicker();
+  
+  const { countryInput, setCountryInput, showCountrySuggestions, setShowCountrySuggestions, filteredCountries, handleCountryInputChange, selectCountry, departmentInput, setDepartmentInput, showDepartmentSuggestions, setShowDepartmentSuggestions, filteredDepartments, handleDepartmentInputChange, selectDepartment, birthCityInput, setBirthCityInput, showBirthCitySuggestions, setShowBirthCitySuggestions, filteredBirthCities, handleBirthCityInputChange, selectBirthCity, currentCityInput, setCurrentCityInput, showCurrentCitySuggestions, setShowCurrentCitySuggestions, filteredCurrentCities, handleCurrentCityInputChange, selectCurrentCity } = useLocationData();
+
+  // Prefill form with API data on mount - only once
+  useEffect(() => {
+    if (dataLoaded) return; // Prevent multiple API calls
+    
+    const fetchAll = async () => {
+      try {
+        // Personal info
+        const personalData = await fetchPersonalInfo();
+        if (personalData) {
+          setCivilite(personalData.civilite || "");
+          setNom(personalData.nom_naissance || "");
+          setPrenom(personalData.prenom || "");
+          setNomUsage(personalData.nom_usage || "");
+          if (personalData.date_naissance) setSelectedDate(new Date(personalData.date_naissance));
+          
+          // Only set location data if user hasn't started typing
+          if (!countryInput) setCountryInput(personalData.pays_naissance || "");
+          if (!departmentInput) setDepartmentInput(personalData.departement_naissance || "");
+          if (!birthCityInput) setBirthCityInput(personalData.ville_naissance || "");
+          
+          // Set other address fields
+          setAdresse(personalData.adresse_actuelle || "");
+          if (!currentCityInput) setCurrentCityInput(personalData.ville_actuelle || "");
+        }
+
+        // Academic background
+        const acadData = await fetchAcademicBackground();
+        if (acadData) {
+          setDiplomeFrancais(acadData.diplome_francais ? "oui" : "non");
+        }
+
+        // Experiences
+        const expData = await fetchExperiences();
+        setExperiences(expData);
+        
+        setDataLoaded(true); // Mark data as loaded
+      } catch (e) {
+        setError("Erreur lors du chargement des données.");
+      }
+    };
+    fetchAll();
+  }, []); // Empty dependency array - only run once
 
   // Navigation
   const goNext = () => {
@@ -127,22 +113,131 @@ export default function InscriptionScreen() {
     if (currentPage > 0) setCurrentPage(currentPage - 1);
   };
 
-  // Filter functions
-  const filteredCountries = countries.filter(country =>
-    country.toLowerCase().includes(countryInput.toLowerCase())
-  );
+  // Save handlers
+  const handleSavePersonalInfo = async () => {
+    const success = await savePersonalInfo({
+      civilite,
+      nom_naissance: nom,
+      prenom,
+      nom_usage: nomUsage,
+      date_naissance: selectedDate.toISOString().slice(0, 10),
+      pays_naissance: countryInput,
+      departement_naissance: departmentInput,
+      ville_naissance: birthCityInput,
+      adresse_actuelle: adresse,
+      ville_actuelle: currentCityInput,
+    });
+    if (success) {
+      alert("Informations personnelles enregistrées !");
+    }
+  };
 
-  const filteredDepartments = guadeloupeDepartments.filter(dept =>
-    dept.toLowerCase().includes(departmentInput.toLowerCase())
-  );
+  const handleSaveContactInfo = async () => {
+    const success = await saveContactInfo({
+      // Add your contact info fields here
+    });
+    if (success) {
+      alert("Coordonnées enregistrées !");
+    }
+  };
 
-  const filteredBirthCities = guadeloupeCities.filter(city =>
-    city.toLowerCase().includes(birthCityInput.toLowerCase())
-  );
+  const handleSaveAcademicBackground = async () => {
+    const success = await saveAcademicBackground({
+      diplome_francais: diplomeFrancais === "oui",
+    });
+    if (success) {
+      alert("Parcours académique enregistré !");
+    }
+  };
 
-  const filteredCurrentCities = guadeloupeCities.filter(city =>
-    city.toLowerCase().includes(currentCityInput.toLowerCase())
-  );
+  function renderDateNaissancePicker() {
+    return (
+      <>
+        <Text style={styles.label}>Date de naissance *</Text>
+        <TouchableOpacity
+          style={styles.dateButton}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text style={styles.dateButtonText}>
+            {formatDate(selectedDate)}
+          </Text>
+        </TouchableOpacity>
+
+        <Modal
+          visible={showDatePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity
+                  onPress={() => setShowDatePicker(false)}
+                  style={styles.modalButton}
+                >
+                  <Text style={styles.modalButtonText}>Annuler</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Date de naissance</Text>
+                <TouchableOpacity
+                  onPress={confirmIOSDate}
+                  style={styles.modalButton}
+                >
+                  <Text style={[styles.modalButtonText, { color: mainViolet }]}>Valider</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+                maximumDate={new Date()}
+                minimumDate={new Date(1950, 0, 1)}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  }
+
+  // Helper function to render upload status
+  const renderUploadStatus = (file: any, documentType: string) => {
+    if (uploading) {
+      return (
+        <View style={styles.uploadStatus}>
+          <Text style={styles.uploadingText}>Téléchargement en cours...</Text>
+        </View>
+      );
+    }
+
+    if (uploadSuccess) {
+      return (
+        <View style={styles.uploadStatus}>
+          <Text style={styles.successText}>✓ {uploadSuccess}</Text>
+        </View>
+      );
+    }
+
+    if (uploadError) {
+      return (
+        <View style={styles.uploadStatus}>
+          <Text style={styles.errorText}>✗ {uploadError}</Text>
+          {file && (
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => retryUpload(file, documentType)}
+            >
+              <Text style={styles.retryButtonText}>Réessayer</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      );
+    }
+
+    return null;
+  };
 
   // Affichage du contenu selon la page
   function renderPage() {
@@ -170,9 +265,7 @@ export default function InscriptionScreen() {
                 }
               />
 
-              {/* Contenu de la page */}
               <View style={styles.form}>
-                {/* Titre et sous-titres */}
                 <Text style={styles.pageSubtitle}>
                   Complétez ci-dessous vos données personnelles telles qu'elles apparaissent sur vos documents d'identité.
                 </Text>
@@ -235,18 +328,17 @@ export default function InscriptionScreen() {
                     style={styles.input}
                     placeholder="Saisissez un pays..."
                     value={countryInput}
-                    onChangeText={(text) => {
-                      setCountryInput(text);
-                      setShowCountrySuggestions(text.length > 0);
-                    }}
+                    onChangeText={handleCountryInputChange}
                     onFocus={() => {
                       if (countryInput.length > 0) {
                         setShowCountrySuggestions(true);
                       }
                     }}
+                    onBlur={() => {
+                      setTimeout(() => setShowCountrySuggestions(false), 200);
+                    }}
                   />
                   
-                  {/* Country suggestions */}
                   {showCountrySuggestions && filteredCountries.length > 0 && (
                     <View style={styles.suggestionsContainer}>
                       <ScrollView style={styles.suggestionsList}>
@@ -254,10 +346,7 @@ export default function InscriptionScreen() {
                           <TouchableOpacity
                             key={country}
                             style={styles.suggestionItem}
-                            onPress={() => {
-                              setCountryInput(country);
-                              setShowCountrySuggestions(false);
-                            }}
+                            onPress={() => selectCountry(country)}
                           >
                             <Text style={styles.suggestionText}>{country}</Text>
                           </TouchableOpacity>
@@ -274,18 +363,17 @@ export default function InscriptionScreen() {
                     style={styles.input}
                     placeholder="Saisissez un département..."
                     value={departmentInput}
-                    onChangeText={(text) => {
-                      setDepartmentInput(text);
-                      setShowDepartmentSuggestions(text.length > 0);
-                    }}
+                    onChangeText={handleDepartmentInputChange}
                     onFocus={() => {
                       if (departmentInput.length > 0) {
                         setShowDepartmentSuggestions(true);
                       }
                     }}
+                    onBlur={() => {
+                      setTimeout(() => setShowDepartmentSuggestions(false), 200);
+                    }}
                   />
                   
-                  {/* Department suggestions */}
                   {showDepartmentSuggestions && filteredDepartments.length > 0 && (
                     <View style={styles.suggestionsContainer}>
                       <ScrollView style={styles.suggestionsList}>
@@ -293,10 +381,7 @@ export default function InscriptionScreen() {
                           <TouchableOpacity
                             key={department}
                             style={styles.suggestionItem}
-                            onPress={() => {
-                              setDepartmentInput(department);
-                              setShowDepartmentSuggestions(false);
-                            }}
+                            onPress={() => selectDepartment(department)}
                           >
                             <Text style={styles.suggestionText}>{department}</Text>
                           </TouchableOpacity>
@@ -313,18 +398,17 @@ export default function InscriptionScreen() {
                     style={styles.input}
                     placeholder="Saisissez une ville..."
                     value={birthCityInput}
-                    onChangeText={(text) => {
-                      setBirthCityInput(text);
-                      setShowBirthCitySuggestions(text.length > 0);
-                    }}
+                    onChangeText={handleBirthCityInputChange}
                     onFocus={() => {
                       if (birthCityInput.length > 0) {
                         setShowBirthCitySuggestions(true);
                       }
                     }}
+                    onBlur={() => {
+                      setTimeout(() => setShowBirthCitySuggestions(false), 200);
+                    }}
                   />
                   
-                  {/* Birth city suggestions */}
                   {showBirthCitySuggestions && filteredBirthCities.length > 0 && (
                     <View style={styles.suggestionsContainer}>
                       <ScrollView style={styles.suggestionsList}>
@@ -332,10 +416,7 @@ export default function InscriptionScreen() {
                           <TouchableOpacity
                             key={city}
                             style={styles.suggestionItem}
-                            onPress={() => {
-                              setBirthCityInput(city);
-                              setShowBirthCitySuggestions(false);
-                            }}
+                            onPress={() => selectBirthCity(city)}
                           >
                             <Text style={styles.suggestionText}>{city}</Text>
                           </TouchableOpacity>
@@ -347,7 +428,12 @@ export default function InscriptionScreen() {
 
                 {/* Adresse */}
                 <Text style={styles.label}>Adresse *</Text>
-                <TextInput style={styles.input} placeholder="Adresse" />
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="Adresse" 
+                  value={adresse}
+                  onChangeText={setAdresse}
+                />
 
                 {/* Ville/Commune */}
                 <Text style={styles.label}>Ville/Commune *</Text>
@@ -356,18 +442,17 @@ export default function InscriptionScreen() {
                     style={styles.input}
                     placeholder="Saisissez une ville..."
                     value={currentCityInput}
-                    onChangeText={(text) => {
-                      setCurrentCityInput(text);
-                      setShowCurrentCitySuggestions(text.length > 0);
-                    }}
+                    onChangeText={handleCurrentCityInputChange}
                     onFocus={() => {
                       if (currentCityInput.length > 0) {
                         setShowCurrentCitySuggestions(true);
                       }
                     }}
+                    onBlur={() => {
+                      setTimeout(() => setShowCurrentCitySuggestions(false), 200);
+                    }}
                   />
                   
-                  {/* Current city suggestions */}
                   {showCurrentCitySuggestions && filteredCurrentCities.length > 0 && (
                     <View style={styles.suggestionsContainer}>
                       <ScrollView style={styles.suggestionsList}>
@@ -375,10 +460,7 @@ export default function InscriptionScreen() {
                           <TouchableOpacity
                             key={city}
                             style={styles.suggestionItem}
-                            onPress={() => {
-                              setCurrentCityInput(city);
-                              setShowCurrentCitySuggestions(false);
-                            }}
+                            onPress={() => selectCurrentCity(city)}
                           >
                             <Text style={styles.suggestionText}>{city}</Text>
                           </TouchableOpacity>
@@ -387,6 +469,8 @@ export default function InscriptionScreen() {
                     </View>
                   )}
                 </View>
+
+                {error && <Text style={{ color: "red", marginBottom: 8 }}>{error}</Text>}
 
                 {/* BOUTON ENREGISTRER */}
                 <TouchableOpacity
@@ -401,12 +485,12 @@ export default function InscriptionScreen() {
                     marginBottom: 18,
                     marginTop: 18,
                   }}
-                  onPress={() => {
-                    // Ajoute ici la logique d'enregistrement si besoin
-                    alert("Informations personnelles enregistrées !");
-                  }}
+                  onPress={handleSavePersonalInfo}
+                  disabled={loading}
                 >
-                  <Text style={{ color: mainBlue, fontWeight: 'bold', fontSize: 16 }}>Enregistrer</Text>
+                  <Text style={{ color: mainBlue, fontWeight: 'bold', fontSize: 16 }}>
+                    {loading ? "Enregistrement..." : "Enregistrer"}
+                  </Text>
                 </TouchableOpacity>
 
                 {/* Navigation Buttons */}
@@ -424,7 +508,6 @@ export default function InscriptionScreen() {
                 </View>
               </View>
             </ScrollView>
-            {/* Boutons navigation */}
           </KeyboardAvoidingView>
         );
       case "coordonnees":
@@ -501,6 +584,8 @@ export default function InscriptionScreen() {
                     width: "100%",
                     marginBottom: 18,
                   }}
+                  onPress={handleSaveContactInfo}
+                  disabled={loading}
                 >
                   <Text
                     style={{
@@ -509,7 +594,7 @@ export default function InscriptionScreen() {
                       fontSize: 16,
                     }}
                   >
-                    Enregistrer
+                    {loading ? "Enregistrement..." : "Enregistrer"}
                   </Text>
                 </TouchableOpacity>
 
@@ -571,22 +656,27 @@ export default function InscriptionScreen() {
 
                 {/* Bouton Importer */}
                 <TouchableOpacity
-                  style={{
-                    backgroundColor: mainViolet,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 12,
-                  }}
+                  style={[
+                    {
+                      backgroundColor: mainViolet,
+                      borderRadius: 8,
+                      padding: 14,
+                      alignItems: "center",
+                      width: "100%",
+                      marginBottom: 12,
+                    },
+                    uploading && { opacity: 0.6 }
+                  ]}
                   onPress={handleImportCV}
+                  disabled={uploading}
                 >
                   <Text
                     style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}
                   >
-                    Importer
+                    {uploading ? "Téléchargement..." : "Importer"}
                   </Text>
                 </TouchableOpacity>
+
                 {cvFile && (
                   <Text
                     style={{ color: "#444", fontSize: 13, marginBottom: 8 }}
@@ -595,54 +685,35 @@ export default function InscriptionScreen() {
                   </Text>
                 )}
 
-                {/* Bouton Supprimer le fichier */}
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: "#fff",
-                    borderColor: mainOrange,
-                    borderWidth: 1.5,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 18,
-                  }}
-                  onPress={() => setCvFile(null)}
-                >
-                  <Text
-                    style={{
-                      color: mainOrange,
-                      fontWeight: "bold",
-                      fontSize: 16,
-                    }}
-                  >
-                    Supprimer le fichier
-                  </Text>
-                </TouchableOpacity>
+                {/* Upload Status */}
+                {renderUploadStatus(cvFile, 'cv')}
 
-                {/* Bouton Enregistrer */}
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: "#fff",
-                    borderColor: mainBlue,
-                    borderWidth: 1.5,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 18,
-                  }}
-                >
-                  <Text
+                {/* Bouton Supprimer le fichier */}
+                {cvFile && (
+                  <TouchableOpacity
                     style={{
-                      color: mainBlue,
-                      fontWeight: "bold",
-                      fontSize: 16,
+                      backgroundColor: "#fff",
+                      borderColor: mainOrange,
+                      borderWidth: 1.5,
+                      borderRadius: 8,
+                      padding: 14,
+                      alignItems: "center",
+                      width: "100%",
+                      marginBottom: 18,
                     }}
+                    onPress={clearCvFile}
                   >
-                    Enregistrer
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{
+                        color: mainOrange,
+                        fontWeight: "bold",
+                        fontSize: 16,
+                      }}
+                    >
+                      Supprimer le fichier
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 {/* Navigation Buttons */}
                 <View style={styles.formNavBtns}>
@@ -977,20 +1048,24 @@ export default function InscriptionScreen() {
 
                 {/* Bouton Importer */}
                 <TouchableOpacity
-                  style={{
-                    backgroundColor: mainViolet,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 12,
-                  }}
+                  style={[
+                    {
+                      backgroundColor: mainViolet,
+                      borderRadius: 8,
+                      padding: 14,
+                      alignItems: "center",
+                      width: "100%",
+                      marginBottom: 12,
+                    },
+                    uploading && { opacity: 0.6 }
+                  ]}
                   onPress={handleImportNotes}
+                  disabled={uploading}
                 >
                   <Text
                     style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}
                   >
-                    Importer
+                    {uploading ? "Téléchargement..." : "Importer"}
                   </Text>
                 </TouchableOpacity>
                 {notesFile && (
@@ -1001,30 +1076,35 @@ export default function InscriptionScreen() {
                   </Text>
                 )}
 
+                {/* Upload Status */}
+                {renderUploadStatus(notesFile, 'notes')}
+
                 {/* Bouton Supprimer le fichier */}
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: "#fff",
-                    borderColor: mainOrange,
-                    borderWidth: 1.5,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 18,
-                  }}
-                  onPress={() => setNotesFile(null)}
-                >
-                  <Text
+                {notesFile && (
+                  <TouchableOpacity
                     style={{
-                      color: mainOrange,
-                      fontWeight: "bold",
-                      fontSize: 16,
+                      backgroundColor: "#fff",
+                      borderColor: mainOrange,
+                      borderWidth: 1.5,
+                      borderRadius: 8,
+                      padding: 14,
+                      alignItems: "center",
+                      width: "100%",
+                      marginBottom: 18,
                     }}
+                    onPress={clearNotesFile}
                   >
-                    Supprimer le fichier
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{
+                        color: mainOrange,
+                        fontWeight: "bold",
+                        fontSize: 16,
+                      }}
+                    >
+                      Supprimer le fichier
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 {/* Commentaire */}
                 <Text style={styles.label}>Commentaire</Text>
@@ -1033,31 +1113,6 @@ export default function InscriptionScreen() {
                   placeholder="Ajouter un commentaire (facultatif)"
                   multiline
                 />
-
-                {/* Bouton Enregistrer */}
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: "#fff",
-                    borderColor: mainBlue,
-                    borderWidth: 1.5,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 18,
-                    marginTop: 18,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: mainBlue,
-                      fontWeight: "bold",
-                      fontSize: 16,
-                    }}
-                  >
-                    Enregistrer
-                  </Text>
-                </TouchableOpacity>
 
                 {/* Navigation Buttons */}
                 <View style={styles.formNavBtns}>
@@ -1116,13 +1171,7 @@ export default function InscriptionScreen() {
                     { marginBottom: 16 },
                     aucuneExperience && styles.radioBtnActive
                   ]}
-                  onPress={() => {
-                    setAucuneExperience(!aucuneExperience);
-                    if (!aucuneExperience) {
-                      setExperiences([]);
-                      setShowExperienceForm(false);
-                    }
-                  }}
+                  onPress={() => handleAucuneExperience(!aucuneExperience)}
                 >
                   <View style={styles.radioCircleOuter}>
                     {aucuneExperience && <View style={styles.radioCircleInner} />}
@@ -1400,45 +1449,64 @@ export default function InscriptionScreen() {
 
                 {/* Bouton Importer */}
                 <TouchableOpacity
-                  style={{
-                    backgroundColor: mainViolet,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 12,
-                  }}
+                  style={[
+                    {
+                      backgroundColor: mainViolet,
+                      borderRadius: 8,
+                      padding: 14,
+                      alignItems: "center",
+                      width: "100%",
+                      marginBottom: 12,
+                    },
+                    uploading && { opacity: 0.6 }
+                  ]}
+                  onPress={handleImportJustificatifs}
+                  disabled={uploading}
                 >
                   <Text
                     style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}
                   >
-                    Importer
+                    {uploading ? "Téléchargement..." : "Importer"}
                   </Text>
                 </TouchableOpacity>
 
-                {/* Bouton Supprimer le fichier */}
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: "#fff",
-                    borderColor: mainOrange,
-                    borderWidth: 1.5,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 18,
-                  }}
-                >
+                {justificatifsFile && (
                   <Text
-                    style={{
-                      color: mainOrange,
-                      fontWeight: "bold",
-                      fontSize: 16,
-                    }}
+                    style={{ color: "#444", fontSize: 13, marginBottom: 8 }}
                   >
-                    Supprimer le fichier
+                    Fichier sélectionné : {justificatifsFile.name}
                   </Text>
-                </TouchableOpacity>
+                )}
+
+                {/* Upload Status */}
+                {renderUploadStatus(justificatifsFile, 'justificatifs')}
+
+                {/* Bouton Supprimer le fichier */}
+                {justificatifsFile && (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: "#fff",
+                      borderColor: mainOrange,
+                      borderWidth: 1.5,
+                      borderRadius: 8,
+                      padding: 14,
+                      alignItems: "center",
+                      width: "100%",
+                      marginBottom: 18,
+                    }}
+                    onPress={clearJustificatifsFile}
+                  >
+                    <Text
+                      style={{
+                        color: mainOrange,
+                        fontWeight: "bold",
+                        fontSize: 16,
+                      }}
+                    >
+                      Supprimer le fichier
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 {/* Commentaire */}
                 <Text style={styles.label}>Commentaire</Text>
@@ -1447,31 +1515,6 @@ export default function InscriptionScreen() {
                   placeholder="Ajouter un commentaire (facultatif)"
                   multiline
                 />
-
-                {/* Bouton Enregistrer */}
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: "#fff",
-                    borderColor: mainBlue,
-                    borderWidth: 1.5,
-                    borderRadius: 8,
-                    padding: 14,
-                    alignItems: "center",
-                    width: "100%",
-                    marginBottom: 18,
-                    marginTop: 18,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: mainBlue,
-                      fontWeight: "bold",
-                      fontSize: 16,
-                    }}
-                  >
-                    Enregistrer
-                  </Text>
-                </TouchableOpacity>
 
                 {/* Navigation Buttons */}
                 <View style={styles.formNavBtns}>
@@ -1495,165 +1538,11 @@ export default function InscriptionScreen() {
     }
   }
 
-  const handleImportCV = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["application/pdf", "image/jpeg", "image/png"],
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (result.assets && result.assets.length > 0 && result.assets[0].uri) {
-      setCvFile(result.assets[0]);
-    }
-  };
-
-  const handleImportNotes = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["application/pdf", "image/jpeg", "image/png"],
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (result.assets && result.assets.length > 0 && result.assets[0].uri) {
-      setNotesFile(result.assets[0]);
-    }
-  };
-
-  const handleDateChange = (event: any, date?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-    }
-    if (date) {
-      setSelectedDate(date);
-    }
-  };
-
-  const confirmIOSDate = () => {
-    setShowDatePicker(false);
-  };
-
-  function renderDateNaissancePicker() {
-    const formatDate = (date: Date) => {
-      return date.toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    };
-
-    return (
-      <>
-        <Text style={styles.label}>Date de naissance *</Text>
-        <TouchableOpacity
-          style={styles.dateButton}
-          onPress={() => setShowDatePicker(true)}
-        >
-          <Text style={styles.dateButtonText}>
-            {formatDate(selectedDate)}
-          </Text>
-        </TouchableOpacity>
-
-        <Modal
-          visible={showDatePicker}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowDatePicker(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <TouchableOpacity
-                  onPress={() => setShowDatePicker(false)}
-                  style={styles.modalButton}
-                >
-                  <Text style={styles.modalButtonText}>Annuler</Text>
-                </TouchableOpacity>
-                <Text style={styles.modalTitle}>Date de naissance</Text>
-                <TouchableOpacity
-                  onPress={confirmIOSDate}
-                  style={styles.modalButton}
-                >
-                  <Text style={[styles.modalButtonText, { color: mainViolet }]}>Valider</Text>
-                </TouchableOpacity>
-              </View>
-              <DateTimePicker
-                value={selectedDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleDateChange}
-                maximumDate={new Date()}
-                minimumDate={new Date(1950, 0, 1)}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </View>
-        </Modal>
-      </>
-    );
-  }
-
-  const addExperience = () => {
-    if (editingExperience) {
-      // Update existing experience
-      setExperiences(prev => prev.map(exp => 
-        exp.id === editingExperience 
-          ? { ...currentExperience, id: editingExperience }
-          : exp
-      ));
-      setEditingExperience(null);
-    } else {
-      // Add new experience
-      const newExperience = {
-        ...currentExperience,
-        id: Date.now().toString()
-      };
-      setExperiences(prev => [...prev, newExperience]);
-    }
-    
-    // Reset form
-    setCurrentExperience({
-      anneeDebut: '',
-      dureeEnMois: '',
-      tempsPlein: '',
-      employeur: '',
-      intitule: '',
-      descriptif: ''
-    });
-    setShowExperienceForm(false);
-  };
-
-  const editExperience = (id: string) => {
-    const experience = experiences.find(exp => exp.id === id);
-    if (experience) {
-      setCurrentExperience({
-        anneeDebut: experience.anneeDebut,
-        dureeEnMois: experience.dureeEnMois,
-        tempsPlein: experience.tempsPlein,
-        employeur: experience.employeur,
-        intitule: experience.intitule,
-        descriptif: experience.descriptif
-      });
-      setEditingExperience(id);
-      setShowExperienceForm(true);
-    }
-  };
-
-  const deleteExperience = (id: string) => {
-    setExperiences(prev => prev.filter(exp => exp.id !== id));
-  };
-
-  const cancelExperienceForm = () => {
-    setCurrentExperience({
-      anneeDebut: '',
-      dureeEnMois: '',
-      tempsPlein: '',
-      employeur: '',
-      intitule: '',
-      descriptif: ''
-    });
-    setEditingExperience(null);
-    setShowExperienceForm(false);
-  };
-
-  return renderPage();
+  return (
+    <View style={styles.container}>
+      {renderPage()}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -2132,5 +2021,37 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  uploadStatus: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  uploadingText: {
+    color: mainViolet,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  successText: {
+    color: '#28a745',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  errorText: {
+    color: mainOrange,
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  retryButton: {
+    backgroundColor: mainViolet,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
 });
-   

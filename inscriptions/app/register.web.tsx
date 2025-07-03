@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import ReCAPTCHA from 'react-google-recaptcha';
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -38,7 +39,23 @@ export default function RegisterWeb() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [emailTakenModalVisible, setEmailTakenModalVisible] = useState(false);
   const recaptchaRef = React.useRef<any>(null);
+
+  // Remove blue focus outline for inputs in this component only (web)
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      input:focus, textarea:focus, select:focus, [tabindex]:focus, .focus-visible, .focus-ring {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
   useEffect(() => {
     async function prepare() {
@@ -117,7 +134,12 @@ export default function RegisterWeb() {
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(data.message || 'Erreur inconnue');
+        // Check for email taken error
+        if (data.message && data.message.toLowerCase().includes('email')) {
+          setEmailTakenModalVisible(true);
+        } else {
+          setError(data.message || 'Erreur inconnue');
+        }
         setLoading(false);
         // Optionally reset captcha
         if (recaptchaRef.current) recaptchaRef.current.reset();
@@ -267,6 +289,26 @@ export default function RegisterWeb() {
           </View>
         </View>
       </View>
+      {/* Modal for email taken */}
+      <Modal
+        visible={emailTakenModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEmailTakenModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Email déjà utilisé</Text>
+            <Text style={styles.modalMessage}>L&apos;adresse email saisie est déjà associée à un compte. Veuillez en utiliser une autre ou vous connecter.</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setEmailTakenModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>Fermer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -443,6 +485,49 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     flexDirection: "row",
     alignItems: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 32,
+    alignItems: 'center',
+    width: 340,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: '#E15A2D',
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  modalButton: {
+    backgroundColor: '#E15A2D',
+    borderRadius: 5,
+    paddingVertical: 10,
+    paddingHorizontal: 32,
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
     

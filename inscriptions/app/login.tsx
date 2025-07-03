@@ -105,7 +105,7 @@ export default function Login() {
       if (biometricAvailable) {
         setShowBiometricModal(true);
       } else {
-        router.replace('/home');
+        router.replace('/');
       }
     } else {
       setError(result.error || 'Erreur inconnue');
@@ -122,14 +122,14 @@ export default function Login() {
       await AsyncStorage.setItem('biometricEnabled', 'true');
       setBiometricEnabled(true);
     }
-    router.replace('/home');
+    router.replace('/');
   };
 
   const handleDeclineBiometrics = async () => {
     setShowBiometricModal(false);
     await AsyncStorage.setItem('biometricEnabled', 'false');
     setBiometricEnabled(false);
-    router.replace('/home');
+    router.replace('/');
   };
 
   if (!appIsReady) {
@@ -239,7 +239,7 @@ export default function Login() {
             </Text>
             <TouchableOpacity
             style={styles.testButton}
-            onPress={() => router.replace('/home')}
+            onPress={() => router.replace('/')}
           >
             <Text style={styles.testButtonText}>Test Accueil</Text>
           </TouchableOpacity>

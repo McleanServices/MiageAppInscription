@@ -26,7 +26,6 @@ export function RootNavigator() {
           options={{ 
             headerBackTitle: 'Accueil',
             headerBackVisible: true,
-            headerShown: false,
             // Force back button to always be visible on web
             ...(Platform.OS === 'web' && {
               headerLeft: undefined, // This will be handled in the file layout

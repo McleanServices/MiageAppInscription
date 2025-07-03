@@ -77,16 +77,22 @@ export default function Register() {
     setError(null);
     setLoading(true);
 
-    // Simple client-side validation for password confirmation
-    if (motDePasse !== confirmerMotDePasse) {
-      setError('Les mots de passe ne correspondent pas.');
+    // Check for missing fields
+    if (!nom || !prenom || !email || !motDePasse || !confirmerMotDePasse) {
+      setError('Veuillez remplir tous les champs.');
       setLoading(false);
       return;
     }
-
-    // Check for missing fields
-    if (!nom || !prenom || !email || !motDePasse) {
-      setError('Veuillez remplir tous les champs.');
+    // Simple email regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Veuillez entrer un email valide.');
+      setLoading(false);
+      return;
+    }
+    // Simple client-side validation for password confirmation
+    if (motDePasse !== confirmerMotDePasse) {
+      setError('Les mots de passe ne correspondent pas.');
       setLoading(false);
       return;
     }
