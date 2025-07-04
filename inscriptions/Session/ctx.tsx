@@ -1,4 +1,4 @@
-import { use, createContext, type PropsWithChildren } from 'react';
+import { createContext, use, type PropsWithChildren } from 'react';
 import { useStorageState } from './useStorageState';
 
 // Define the user type based on your backend response
@@ -24,21 +24,23 @@ const AuthContext = createContext<{
   user: User | null;
   token: string | null;
   isLoading: boolean;
-}>({
-  signIn: async () => ({ success: false }),
-  signOut: () => null,
-  refreshUserData: () => null,
-  session: null,
-  user: null,
-  token: null,
-  isLoading: false,
-});
+} | null>(null);
 
 // This hook can be used to access the user info.
 export function useSession() {
   const value = use(AuthContext);
   if (!value) {
-    throw new Error('useSession must be wrapped in a <SessionProvider />');
+    console.error('useSession must be wrapped in a <SessionProvider />');
+    // Return a default value instead of throwing
+    return {
+      signIn: async () => ({ success: false, error: 'Context not initialized' }),
+      signOut: () => {},
+      refreshUserData: () => {},
+      session: null,
+      user: null,
+      token: null,
+      isLoading: false,
+    };
   }
 
   return value;

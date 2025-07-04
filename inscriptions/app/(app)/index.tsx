@@ -234,6 +234,20 @@ export default function Index() {
                   <Ionicons name="arrow-forward" size={14} color="#fff" />
                 </TouchableOpacity>
               )}
+              {/* Add blue 'Télécharger' button for Validation du sujet (Étape 3) */}
+              {etape.titre.includes('Validation du sujet') && (
+                <TouchableOpacity
+                  style={styles.duoCtaBtn}
+                  onPress={() => {
+                    const url = 'http://miage-antilles.fr/wp-content/uploads/2025/05/3-DossierValidationSujet2025-2026_LICENCE3.docx';
+                    if (Platform.OS === "web") window.open(url, "_blank");
+                    else Linking.openURL(url);
+                  }}
+                >
+                  <Text style={styles.duoCtaText}>Télécharger</Text>
+                  <Ionicons name="download" size={14} color="#fff" />
+                </TouchableOpacity>
+              )}
               {/* Link only for current step */}
               {etape.link && idx === etapeRealisee && (
                 <TouchableOpacity

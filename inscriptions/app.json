@@ -43,7 +43,8 @@
         {
           "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID."
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,

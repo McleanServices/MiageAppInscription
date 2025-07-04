@@ -7,7 +7,7 @@ export default function Layout() {
       headerTitle: 'Fiche de renseignement',
       headerTitleAlign: 'center',
       headerBackVisible: true, // Ensure the back button is visible
-      headerShown: true, // Show the header
+      headerShown: false, // Show the header
  
       }}
     >

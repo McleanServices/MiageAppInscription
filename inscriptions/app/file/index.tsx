@@ -1,7 +1,6 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from "@react-native-picker/picker";
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -13,10 +12,10 @@ import {
   View
 } from "react-native";
 import StepHeader from "../../components/StepHeader";
-import { useFormData } from "../../utils/hooks/useFormData";
+import { useDatePicker } from "../../utils/hooks/useDatePicker";
 import { useDocumentPicker } from "../../utils/hooks/useDocumentPicker";
 import { useExperienceForm } from "../../utils/hooks/useExperienceForm";
-import { useDatePicker } from "../../utils/hooks/useDatePicker";
+import { useFormData } from "../../utils/hooks/useFormData";
 import { useLocationData } from "../../utils/hooks/useLocationData";
 
 // Couleurs principales
@@ -44,6 +43,14 @@ export default function InscriptionScreen() {
   const [nomUsage, setNomUsage] = useState("");
   const [notesOption, setNotesOption] = useState<string>("");
   const [diplomeFrancais, setDiplomeFrancais] = useState<string>("");
+  const [niveauPostBac, setNiveauPostBac] = useState<string>("");
+  const [showNiveauModal, setShowNiveauModal] = useState(false);
+  const [dateInput, setDateInput] = useState("");
+  
+  // Contact info state variables
+  const [email, setEmail] = useState("");
+  const [telephone, setTelephone] = useState("");
+  const [codePostal, setCodePostal] = useState("");
   
   // Add local state for address fields that should not be overwritten by location hook
   const [adresse, setAdresse] = useState("");
@@ -54,7 +61,7 @@ export default function InscriptionScreen() {
   // Use custom hooks
   const { loading, error, setError, fetchPersonalInfo, savePersonalInfo, fetchContactInfo, saveContactInfo, fetchAcademicBackground, saveAcademicBackground, fetchExperiences, saveExperience } = useFormData();
   
-  const { cvFile, notesFile, justificatifsFile, uploading, uploadSuccess, uploadError, handleImportCV, handleImportNotes, handleImportJustificatifs, clearCvFile, clearNotesFile, clearJustificatifsFile, retryUpload, clearMessages } = useDocumentPicker();
+  const { cvFile, notesFile, justificatifsFile, uploading, uploadSuccess, uploadError, existingDocuments, loadingDocuments, documentError, downloadingFile, deleteDocument, downloadDocument, getDocumentsByType, handleImportCV, handleImportNotes, handleImportJustificatifs, clearCvFile, clearNotesFile, clearJustificatifsFile, retryUpload, clearMessages } = useDocumentPicker();
   
   const { experiences, setExperiences, showExperienceForm, setShowExperienceForm, editingExperience, currentExperience, setCurrentExperience, aucuneExperience, addExperience, editExperience, deleteExperience, cancelExperienceForm, handleAucuneExperience } = useExperienceForm();
   
@@ -81,10 +88,16 @@ export default function InscriptionScreen() {
           if (!countryInput) setCountryInput(personalData.pays_naissance || "");
           if (!departmentInput) setDepartmentInput(personalData.departement_naissance || "");
           if (!birthCityInput) setBirthCityInput(personalData.ville_naissance || "");
-          
-          // Set other address fields
-          setAdresse(personalData.adresse_actuelle || "");
-          if (!currentCityInput) setCurrentCityInput(personalData.ville_actuelle || "");
+        }
+
+        // Contact info
+        const contactData = await fetchContactInfo();
+        if (contactData) {
+          setEmail(contactData.email || "");
+          setTelephone(contactData.telephone || "");
+          setCodePostal(contactData.code_postal || "");
+          setAdresse(contactData.adresse || "");
+          if (!currentCityInput) setCurrentCityInput(contactData.ville || "");
         }
 
         // Academic background
@@ -98,6 +111,9 @@ export default function InscriptionScreen() {
         setExperiences(expData);
         
         setDataLoaded(true); // Mark data as loaded
+        
+        // Initialize date input with formatted date
+        setDateInput(formatDate(selectedDate));
       } catch (e) {
         setError("Erreur lors du chargement des données.");
       }
@@ -124,8 +140,6 @@ export default function InscriptionScreen() {
       pays_naissance: countryInput,
       departement_naissance: departmentInput,
       ville_naissance: birthCityInput,
-      adresse_actuelle: adresse,
-      ville_actuelle: currentCityInput,
     });
     if (success) {
       alert("Informations personnelles enregistrées !");
@@ -134,7 +148,11 @@ export default function InscriptionScreen() {
 
   const handleSaveContactInfo = async () => {
     const success = await saveContactInfo({
-      // Add your contact info fields here
+      email,
+      telephone,
+      code_postal: codePostal,
+      adresse,
+      ville: currentCityInput,
     });
     if (success) {
       alert("Coordonnées enregistrées !");
@@ -151,50 +169,123 @@ export default function InscriptionScreen() {
   };
 
   function renderDateNaissancePicker() {
+    const handleDateChange = (text: string) => {
+      // Remove any non-numeric characters except /
+      let cleanedText = text.replace(/[^0-9]/g, '');
+      
+      // Add / separators automatically
+      let formattedText = '';
+      for (let i = 0; i < cleanedText.length && i < 8; i++) {
+        if (i === 2 || i === 4) {
+          formattedText += '/';
+        }
+        formattedText += cleanedText[i];
+      }
+      
+      setDateInput(formattedText);
+      
+      // Try to parse the date
+      const dateParts = formattedText.split('/');
+      if (dateParts.length === 3 && dateParts[2].length === 4) {
+        const day = parseInt(dateParts[0]);
+        const month = parseInt(dateParts[1]) - 1; // Month is 0-indexed
+        const year = parseInt(dateParts[2]);
+        
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year) && 
+            day >= 1 && day <= 31 && month >= 0 && month <= 11 && 
+            year >= 1900 && year <= new Date().getFullYear()) {
+          const newDate = new Date(year, month, day);
+          setSelectedDate(newDate);
+        }
+      }
+    };
+
     return (
       <>
         <Text style={styles.label}>Date de naissance *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="JJ/MM/AAAA"
+          value={dateInput}
+          onChangeText={handleDateChange}
+          keyboardType="numeric"
+          maxLength={10}
+        />
+        <Text style={styles.dateFormatHint}>
+          Format: JJ/MM/AAAA (exemple: 15/01/1990)
+        </Text>
+      </>
+    );
+  }
+
+  function renderNiveauPostBacPicker() {
+    const niveauOptions = [
+      { label: "Sélectionnez un niveau", value: "" },
+      { label: "Bac+1", value: "bac1" },
+      { label: "Bac+2", value: "bac2" },
+      { label: "Bac+3", value: "bac3" },
+      { label: "Bac+4", value: "bac4" },
+      { label: "Bac+5", value: "bac5" },
+      { label: "Pas de diplôme de l'enseignement supérieur", value: "none" }
+    ];
+
+    const getDisplayText = () => {
+      const selectedOption = niveauOptions.find(option => option.value === niveauPostBac);
+      return selectedOption ? selectedOption.label : "Sélectionnez un niveau";
+    };
+
+    return (
+      <>
+        <Text style={styles.label}>Niveau post-bac du diplôme préparé *</Text>
         <TouchableOpacity
           style={styles.dateButton}
-          onPress={() => setShowDatePicker(true)}
+          onPress={() => setShowNiveauModal(true)}
         >
           <Text style={styles.dateButtonText}>
-            {formatDate(selectedDate)}
+            {getDisplayText()}
           </Text>
         </TouchableOpacity>
 
         <Modal
-          visible={showDatePicker}
+          visible={showNiveauModal}
           transparent={true}
           animationType="slide"
-          onRequestClose={() => setShowDatePicker(false)}
+          onRequestClose={() => setShowNiveauModal(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
+          <View style={styles.simpleModalOverlay}>
+            <View style={styles.simpleModalContent}>
+              <View style={styles.simpleModalHeader}>
+                <Text style={styles.simpleModalTitle}>Choisir un niveau</Text>
                 <TouchableOpacity
-                  onPress={() => setShowDatePicker(false)}
-                  style={styles.modalButton}
+                  onPress={() => setShowNiveauModal(false)}
+                  style={styles.simpleModalCloseButton}
                 >
-                  <Text style={styles.modalButtonText}>Annuler</Text>
-                </TouchableOpacity>
-                <Text style={styles.modalTitle}>Date de naissance</Text>
-                <TouchableOpacity
-                  onPress={confirmIOSDate}
-                  style={styles.modalButton}
-                >
-                  <Text style={[styles.modalButtonText, { color: mainViolet }]}>Valider</Text>
+                  <Text style={styles.simpleModalCloseText}>✕</Text>
                 </TouchableOpacity>
               </View>
-              <DateTimePicker
-                value={selectedDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleDateChange}
-                maximumDate={new Date()}
-                minimumDate={new Date(1950, 0, 1)}
-                style={{ flex: 1 }}
-              />
+              
+              <View style={styles.simpleModalOptions}>
+                {niveauOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.simpleModalOption,
+                      niveauPostBac === option.value && styles.simpleModalOptionSelected
+                    ]}
+                    onPress={() => {
+                      setNiveauPostBac(option.value);
+                      setShowNiveauModal(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.simpleModalOptionText,
+                      niveauPostBac === option.value && styles.simpleModalOptionTextSelected
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
         </Modal>
@@ -426,50 +517,6 @@ export default function InscriptionScreen() {
                   )}
                 </View>
 
-                {/* Adresse */}
-                <Text style={styles.label}>Adresse *</Text>
-                <TextInput 
-                  style={styles.input} 
-                  placeholder="Adresse" 
-                  value={adresse}
-                  onChangeText={setAdresse}
-                />
-
-                {/* Ville/Commune */}
-                <Text style={styles.label}>Ville/Commune *</Text>
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Saisissez une ville..."
-                    value={currentCityInput}
-                    onChangeText={handleCurrentCityInputChange}
-                    onFocus={() => {
-                      if (currentCityInput.length > 0) {
-                        setShowCurrentCitySuggestions(true);
-                      }
-                    }}
-                    onBlur={() => {
-                      setTimeout(() => setShowCurrentCitySuggestions(false), 200);
-                    }}
-                  />
-                  
-                  {showCurrentCitySuggestions && filteredCurrentCities.length > 0 && (
-                    <View style={styles.suggestionsContainer}>
-                      <ScrollView style={styles.suggestionsList}>
-                        {filteredCurrentCities.map((city) => (
-                          <TouchableOpacity
-                            key={city}
-                            style={styles.suggestionItem}
-                            onPress={() => selectCurrentCity(city)}
-                          >
-                            <Text style={styles.suggestionText}>{city}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  )}
-                </View>
-
                 {error && <Text style={{ color: "red", marginBottom: 8 }}>{error}</Text>}
 
                 {/* BOUTON ENREGISTRER */}
@@ -547,6 +594,8 @@ export default function InscriptionScreen() {
                   style={styles.input}
                   placeholder="Adresse électronique"
                   keyboardType="email-address"
+                  value={email}
+                  onChangeText={setEmail}
                 />
 
                 <Text style={styles.label}>Téléphone *</Text>
@@ -566,11 +615,61 @@ export default function InscriptionScreen() {
                   style={styles.input}
                   placeholder="Téléphone"
                   keyboardType="phone-pad"
+                  value={telephone}
+                  onChangeText={setTelephone}
                 />
 
                 {/* Ajoute d'autres labels/inputs si besoin */}
-                <Text style={styles.label}>Adresse</Text>
-                <TextInput style={styles.input} placeholder="Adresse" />
+                <Text style={styles.label}>Code postal</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Code postal"
+                  value={codePostal}
+                  onChangeText={setCodePostal}
+                />
+
+                <Text style={styles.label}>Adresse *</Text>
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="Adresse" 
+                  value={adresse}
+                  onChangeText={setAdresse}
+                />
+
+                {/* Ville/Commune */}
+                <Text style={styles.label}>Ville/Commune *</Text>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Saisissez une ville..."
+                    value={currentCityInput}
+                    onChangeText={handleCurrentCityInputChange}
+                    onFocus={() => {
+                      if (currentCityInput.length > 0) {
+                        setShowCurrentCitySuggestions(true);
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => setShowCurrentCitySuggestions(false), 200);
+                    }}
+                  />
+                  
+                  {showCurrentCitySuggestions && filteredCurrentCities.length > 0 && (
+                    <View style={styles.suggestionsContainer}>
+                      <ScrollView style={styles.suggestionsList}>
+                        {filteredCurrentCities.map((city) => (
+                          <TouchableOpacity
+                            key={city}
+                            style={styles.suggestionItem}
+                            onPress={() => selectCurrentCity(city)}
+                          >
+                            <Text style={styles.suggestionText}>{city}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
 
                 <TouchableOpacity
                   style={{
@@ -654,28 +753,30 @@ export default function InscriptionScreen() {
                   caractère accentué.
                 </Text>
 
-                {/* Bouton Importer */}
-                <TouchableOpacity
-                  style={[
-                    {
-                      backgroundColor: mainViolet,
-                      borderRadius: 8,
-                      padding: 14,
-                      alignItems: "center",
-                      width: "100%",
-                      marginBottom: 12,
-                    },
-                    uploading && { opacity: 0.6 }
-                  ]}
-                  onPress={handleImportCV}
-                  disabled={uploading}
-                >
-                  <Text
-                    style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}
+                {/* Bouton Importer - Only show if no CV files exist */}
+                {getDocumentsByType('cv').length === 0 && (
+                  <TouchableOpacity
+                    style={[
+                      {
+                        backgroundColor: mainViolet,
+                        borderRadius: 8,
+                        padding: 14,
+                        alignItems: "center",
+                        width: "100%",
+                        marginBottom: 12,
+                      },
+                      uploading && { opacity: 0.6 }
+                    ]}
+                    onPress={handleImportCV}
+                    disabled={uploading}
                   >
-                    {uploading ? "Téléchargement..." : "Importer"}
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}
+                    >
+                      {uploading ? "Téléchargement..." : "Importer"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 {cvFile && (
                   <Text
@@ -688,32 +789,83 @@ export default function InscriptionScreen() {
                 {/* Upload Status */}
                 {renderUploadStatus(cvFile, 'cv')}
 
-                {/* Bouton Supprimer le fichier */}
-                {cvFile && (
-                  <TouchableOpacity
-                    style={{
-                      backgroundColor: "#fff",
-                      borderColor: mainOrange,
-                      borderWidth: 1.5,
-                      borderRadius: 8,
-                      padding: 14,
-                      alignItems: "center",
-                      width: "100%",
-                      marginBottom: 18,
-                    }}
-                    onPress={clearCvFile}
-                  >
-                    <Text
-                      style={{
-                        color: mainOrange,
-                        fontWeight: "bold",
-                        fontSize: 16,
-                      }}
-                    >
-                      Supprimer le fichier
-                    </Text>
-                  </TouchableOpacity>
+                {/* Existing CV Files */}
+                {loadingDocuments && (
+                  <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Chargement des documents...</Text>
+                  </View>
                 )}
+
+                {documentError && (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>✗ {documentError}</Text>
+                  </View>
+                )}
+
+                {/* Display existing CV files */}
+                {getDocumentsByType('cv').map((doc) => {
+                  const fileExtension = doc.file_name.split('.').pop()?.toLowerCase() || '';
+                  const displayName = `cv_miageconnect.${fileExtension}`;
+                  
+                  return (
+                    <View key={doc.id} style={styles.documentCard}>
+                      <View style={styles.documentInfo}>
+                        <Text style={styles.documentName}>{displayName}</Text>
+                        <Text style={styles.documentDate}>
+                          Ajouté le {new Date(doc.created_at).toLocaleDateString('fr-FR')}
+                        </Text>
+                        {doc.commentaire && (
+                          <Text style={styles.documentComment}>{doc.commentaire}</Text>
+                        )}
+                      </View>
+                      <View style={styles.documentActions}>
+                        <TouchableOpacity
+                          style={[
+                            styles.downloadButton,
+                            downloadingFile === doc.id && { opacity: 0.6 }
+                          ]}
+                          onPress={() => downloadDocument(doc.id, doc.file_name)}
+                          disabled={downloadingFile === doc.id}
+                        >
+                          <Text style={styles.downloadButtonText}>
+                            {downloadingFile === doc.id ? 'Téléchargement...' : 'Télécharger'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteButton}
+                          onPress={async () => {
+                            Alert.alert(
+                              'Confirmation',
+                              'Êtes-vous sûr de vouloir supprimer ce document ?',
+                              [
+                                {
+                                  text: 'Annuler',
+                                  style: 'cancel',
+                                },
+                                {
+                                  text: 'Supprimer',
+                                  style: 'destructive',
+                                  onPress: async () => {
+                                    const success = await deleteDocument(doc.id);
+                                    if (success) {
+                                      Alert.alert('Succès', 'Document supprimé avec succès');
+                                    } else {
+                                      Alert.alert('Erreur', 'Erreur lors de la suppression du document');
+                                    }
+                                  },
+                                },
+                              ]
+                            );
+                          }}
+                        >
+                          <Text style={styles.deleteButtonText}>Supprimer</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+
+
 
                 {/* Navigation Buttons */}
                 <View style={styles.formNavBtns}>
@@ -826,34 +978,13 @@ export default function InscriptionScreen() {
                 </View>
 
                 {/* Niveau post-bac du diplôme préparé */}
-                <Text style={styles.label}>
-                  Niveau post-bac du diplôme préparé *
-                </Text>
                 <Text style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>
                   Sélectionnez le niveau post-bac du diplôme préparé pour
                   l'année renseignée. Si cette année de cursus post-bac ne
                   prépare à aucun diplôme, sélectionner « Pas de diplôme de
                   l'enseignement supérieur »
                 </Text>
-                <View style={styles.pickerWrapper}>
-                  <Picker
-                    selectedValue={""}
-                    onValueChange={() => { }}
-                    style={styles.picker}
-                    mode="dropdown"
-                  >
-                    <Picker.Item label="Sélectionnez un niveau" value="" />
-                    <Picker.Item label="Bac+1" value="bac1" />
-                    <Picker.Item label="Bac+2" value="bac2" />
-                    <Picker.Item label="Bac+3" value="bac3" />
-                    <Picker.Item label="Bac+4" value="bac4" />
-                    <Picker.Item label="Bac+5" value="bac5" />
-                    <Picker.Item
-                      label="Pas de diplôme de l'enseignement supérieur"
-                      value="none"
-                    />
-                  </Picker>
-                </View>
+                {renderNiveauPostBacPicker()}
 
                 {/* Ajoute d'autres labels/inputs si besoin */}
                 <Text style={styles.label}>Label</Text>
@@ -1046,28 +1177,31 @@ export default function InscriptionScreen() {
                   caractère accentué.
                 </Text>
 
-                {/* Bouton Importer */}
-                <TouchableOpacity
-                  style={[
-                    {
-                      backgroundColor: mainViolet,
-                      borderRadius: 8,
-                      padding: 14,
-                      alignItems: "center",
-                      width: "100%",
-                      marginBottom: 12,
-                    },
-                    uploading && { opacity: 0.6 }
-                  ]}
-                  onPress={handleImportNotes}
-                  disabled={uploading}
-                >
-                  <Text
-                    style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}
+                {/* Bouton Importer - Only show if no notes files exist */}
+                {getDocumentsByType('notes').length === 0 && (
+                  <TouchableOpacity
+                    style={[
+                      {
+                        backgroundColor: mainViolet,
+                        borderRadius: 8,
+                        padding: 14,
+                        alignItems: "center",
+                        width: "100%",
+                        marginBottom: 12,
+                      },
+                      uploading && { opacity: 0.6 }
+                    ]}
+                    onPress={handleImportNotes}
+                    disabled={uploading}
                   >
-                    {uploading ? "Téléchargement..." : "Importer"}
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}
+                    >
+                      {uploading ? "Téléchargement..." : "Importer"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
                 {notesFile && (
                   <Text
                     style={{ color: "#444", fontSize: 13, marginBottom: 8 }}
@@ -1079,32 +1213,81 @@ export default function InscriptionScreen() {
                 {/* Upload Status */}
                 {renderUploadStatus(notesFile, 'notes')}
 
-                {/* Bouton Supprimer le fichier */}
-                {notesFile && (
-                  <TouchableOpacity
-                    style={{
-                      backgroundColor: "#fff",
-                      borderColor: mainOrange,
-                      borderWidth: 1.5,
-                      borderRadius: 8,
-                      padding: 14,
-                      alignItems: "center",
-                      width: "100%",
-                      marginBottom: 18,
-                    }}
-                    onPress={clearNotesFile}
-                  >
-                    <Text
-                      style={{
-                        color: mainOrange,
-                        fontWeight: "bold",
-                        fontSize: 16,
-                      }}
-                    >
-                      Supprimer le fichier
-                    </Text>
-                  </TouchableOpacity>
+                {/* Existing Notes Files */}
+                {loadingDocuments && (
+                  <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Chargement des documents...</Text>
+                  </View>
                 )}
+
+                {documentError && (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>✗ {documentError}</Text>
+                  </View>
+                )}
+
+                {/* Display existing notes files */}
+                {getDocumentsByType('notes').map((doc) => {
+                  const fileExtension = doc.file_name.split('.').pop()?.toLowerCase() || '';
+                  const displayName = `notes_miageconnect.${fileExtension}`;
+                  
+                  return (
+                    <View key={doc.id} style={styles.documentCard}>
+                      <View style={styles.documentInfo}>
+                        <Text style={styles.documentName}>{displayName}</Text>
+                        <Text style={styles.documentDate}>
+                          Ajouté le {new Date(doc.created_at).toLocaleDateString('fr-FR')}
+                        </Text>
+                        {doc.commentaire && (
+                          <Text style={styles.documentComment}>{doc.commentaire}</Text>
+                        )}
+                      </View>
+                      <View style={styles.documentActions}>
+                        <TouchableOpacity
+                          style={[
+                            styles.downloadButton,
+                            downloadingFile === doc.id && { opacity: 0.6 }
+                          ]}
+                          onPress={() => downloadDocument(doc.id, doc.file_name)}
+                          disabled={downloadingFile === doc.id}
+                        >
+                          <Text style={styles.downloadButtonText}>
+                            {downloadingFile === doc.id ? 'Téléchargement...' : 'Télécharger'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteButton}
+                          onPress={async () => {
+                            Alert.alert(
+                              'Confirmation',
+                              'Êtes-vous sûr de vouloir supprimer ce document ?',
+                              [
+                                {
+                                  text: 'Annuler',
+                                  style: 'cancel',
+                                },
+                                {
+                                  text: 'Supprimer',
+                                  style: 'destructive',
+                                  onPress: async () => {
+                                    const success = await deleteDocument(doc.id);
+                                    if (success) {
+                                      Alert.alert('Succès', 'Document supprimé avec succès');
+                                    } else {
+                                      Alert.alert('Erreur', 'Erreur lors de la suppression du document');
+                                    }
+                                  },
+                                },
+                              ]
+                            );
+                          }}
+                        >
+                          <Text style={styles.deleteButtonText}>Supprimer</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
 
                 {/* Commentaire */}
                 <Text style={styles.label}>Commentaire</Text>
@@ -2054,4 +2237,251 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
+  // Document management styles
+  loadingContainer: {
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  loadingText: {
+    color: mainViolet,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  errorContainer: {
+    padding: 12,
+    backgroundColor: '#fff3f3',
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: mainOrange,
+  },
+  documentCard: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  documentInfo: {
+    marginBottom: 12,
+  },
+  documentName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: mainBlue,
+    marginBottom: 4,
+  },
+  documentDate: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  documentComment: {
+    fontSize: 14,
+    color: '#444',
+    fontStyle: 'italic',
+  },
+  documentActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  downloadButton: {
+    backgroundColor: mainViolet,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  downloadButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  modalOption: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalOptionSelected: {
+    backgroundColor: '#F5F8FF',
+  },
+  modalOptionText: {
+    fontSize: 16,
+    color: mainBlue,
+    flex: 1,
+  },
+  modalOptionTextSelected: {
+    color: mainViolet,
+    fontWeight: '500',
+  },
+  modalOptionCheck: {
+    fontSize: 18,
+    color: mainViolet,
+    fontWeight: 'bold',
+  },
+  datePickerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  datePickerText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: mainBlue,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  datePickerSubtext: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+  datePickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  datePickerContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    maxHeight: '80%',
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: mainBlue,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  datePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  datePickerLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: mainBlue,
+    width: 60,
+    marginRight: 10,
+  },
+  datePickerScrollView: {
+    flex: 1,
+    maxHeight: 120,
+  },
+  datePickerOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginVertical: 2,
+  },
+  datePickerOptionSelected: {
+    backgroundColor: mainViolet,
+  },
+  datePickerOptionText: {
+    fontSize: 16,
+    color: mainBlue,
+    textAlign: 'center',
+  },
+  datePickerOptionTextSelected: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  datePickerConfirmButton: {
+    backgroundColor: mainViolet,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  datePickerConfirmButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  dateFormatHint: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: -10,
+    marginBottom: 14,
+    fontStyle: 'italic',
+  },
+  // Simple modal styles
+  simpleModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  simpleModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+    maxHeight: '70%',
+  },
+  simpleModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  simpleModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: mainBlue,
+  },
+  simpleModalCloseButton: {
+    padding: 8,
+  },
+  simpleModalCloseText: {
+    fontSize: 20,
+    color: '#888',
+    fontWeight: 'bold',
+  },
+  simpleModalOptions: {
+    paddingVertical: 8,
+  },
+  simpleModalOption: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  simpleModalOptionSelected: {
+    backgroundColor: '#F5F8FF',
+  },
+  simpleModalOptionText: {
+    fontSize: 16,
+    color: mainBlue,
+  },
+  simpleModalOptionTextSelected: {
+    color: mainViolet,
+    fontWeight: '500',
+  },
 });
+
+export const PIECES_META = {
+  cv: { label: 'CV', apiType: 'cv' },
+  lettre_motivation: { label: 'Lettre de motivation', apiType: 'lettre_motivation' },
+  notes: { label: 'Relevés de notes', apiType: 'notes' },
+  diplome: { label: 'Diplôme(s)', apiType: 'diplome' },
+  identite: { label: 'Pièce d\'identité', apiType: 'identite' },
+  photo: { label: 'Photo d\'identité', apiType: 'photo' },
+};

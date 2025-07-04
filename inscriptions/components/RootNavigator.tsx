@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
-import { useSession } from '../Session/ctx';
 import { Platform } from 'react-native';
+import { useSession } from '../Session/ctx';
 
 
 export function RootNavigator() {
@@ -16,7 +16,7 @@ export function RootNavigator() {
         <Stack.Screen name="register" options={{ headerShown: false, headerBackVisible: false }} />
       </Stack.Protected>
 
-      <Stack.Protected guard={session}>
+      <Stack.Protected guard={!!session}>
         <Stack.Screen
           name="(app)"
           options={{ headerShown: false }}

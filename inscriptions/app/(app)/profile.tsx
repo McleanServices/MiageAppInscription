@@ -1,4 +1,5 @@
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from 'expo-router';
 import React, { useState } from "react";
 import {
   Image,
@@ -8,7 +9,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSession, useUserData } from "../../Session/ctx";
+import { useSession } from "../../Session/ctx";
+import { useDocumentPicker } from '../../utils/hooks/useDocumentPicker';
+import { useProfileData } from '../../utils/hooks/useProfileData';
 
 const PRIMARY = "#2563EB";
 const SECONDARY = "#3B82F6";
@@ -46,266 +49,105 @@ function getEtapeActuelle(statut: string) {
 }
 
 export default function Profile() {
-  const { signOut, token } = useSession();
-  const { user, isLoading, refreshUserData } = useUserData();
+  const { signOut } = useSession();
+  const { profile, dossierStatus, progress, loading, error, lastUpdated, refresh } = useProfileData();
   const [refreshing, setRefreshing] = useState(false);
-  const statut = "En analyse";
-  const etapeActuelle = getEtapeActuelle(statut) - 1;
-  const actions = [
-    { icon: "upload-file" as const, titre: "Document déposé", date: "12/06/2024", color: PRIMARY },
-    { icon: "check-circle" as const, titre: "Compte créé", date: "08/06/2024", color: CIRCLE_DONE },
+  const [chatbotVisible, setChatbotVisible] = useState(false);
+  const router = useRouter();
+  const { existingDocuments, loadingDocuments } = useDocumentPicker();
+
+  // New checklist for required pieces
+  const piecesAFournir = [
+    { key: 'cv', label: 'CV', icon: 'document-text-outline' as const },
+    { key: 'lettre_motivation', label: 'Lettre de motivation', icon: 'document-text-outline' as const },
+    { key: 'notes', label: 'Relevés de notes', icon: 'document-text-outline' as const },
+    { key: 'diplome', label: 'Diplôme(s)', icon: 'document-text-outline' as const },
+    { key: 'identite', label: 'Pièce d\'identité', icon: 'person-outline' as const },
+    { key: 'photo', label: 'Photo d\'identité', icon: 'image-outline' as const },
   ];
 
-  // Calculate progress
-  const totalEtapes = 4;
-  const currentEtape = 3; // Example: 3 out of 4 validated
-  const percent = Math.round((currentEtape / totalEtapes) * 100);
-
-  const [chatbotVisible, setChatbotVisible] = useState(false);
-
-  const handleLogout = () => {
-    signOut();
+  // Compute status for each piece
+  const getPieceStatus = (key: string) => {
+    if (loadingDocuments) return '...';
+    return existingDocuments.some(doc => doc.document_type === key) ? 'Déposé' : 'À compléter';
   };
+  const completedCount = piecesAFournir.filter(item => getPieceStatus(item.key) === 'Déposé').length;
+  const percent = Math.round((completedCount / piecesAFournir.length) * 100);
 
-  const handleRefreshUserData = async () => {
-    setRefreshing(true);
-    try {
-      refreshUserData();
-      // Add a small delay for better UX
-      await new Promise(resolve => setTimeout(resolve, 500));
-    } catch (error) {
-      console.error('Error refreshing user data:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  const handleLogout = () => signOut();
+  const handleRefresh = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
 
-  // Get user display name with better fallback handling
   const getUserDisplayName = () => {
-    if (isLoading) return "Chargement...";
-    
-    if (user?.nom && user?.prenom) {
-      return `${user.prenom} ${user.nom}`;
-    } else if (user?.nom) {
-      return user.nom;
-    } else if (user?.prenom) {
-      return user.prenom;
-    } else if (user?.email) {
-      return user.email.split('@')[0];
-    }
-    return "Utilisateur";
+    if (loading) return 'Chargement...';
+    if (profile?.prenom && profile?.nom) return `${profile.prenom} ${profile.nom}`;
+    if (profile?.nom) return profile.nom;
+    if (profile?.prenom) return profile.prenom;
+    if (profile?.email) return profile.email.split('@')[0];
+    return 'Utilisateur';
   };
-
-  // Show loading state if user data is being loaded
-  if (isLoading) {
-    return (
-      <View style={[styles.card, { margin: 20, alignItems: 'center' }]}>
-        <Text style={styles.cardTitle}>Chargement des données utilisateur...</Text>
-      </View>
-    );
-  }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: PASTEL_BG }} contentContainerStyle={{ paddingBottom: 32 }}>
-      {/* Header */}
-      <View style={styles.headerContainer}>
-        <View style={styles.headerLeft}>
-          <Image source={require("../../assets/images/miage-logo.png")} style={styles.avatar} />
-          <View>
-            <Text style={styles.greeting}>Bonjour,</Text>
-            <Text style={styles.userName}>{getUserDisplayName()}</Text>
-            <Text style={styles.profileSubtitle}>Candidature MIAGE L3 – Année 2025–2026</Text>
+    <View style={{ flex: 1, backgroundColor: PASTEL_BG }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={[styles.headerContainer, { marginBottom: 0 }]}> 
+          <View style={styles.headerLeft}>
+            <Image source={require('../../assets/images/miage-logo.png')} style={styles.avatar} />
+            <View>
+              <Text style={styles.greeting}>Bonjour 👋</Text>
+              <Text style={styles.userName}>{getUserDisplayName()}</Text>
+              <Text style={styles.profileSubtitle}>Candidature MIAGE L3 – 2025–2026</Text>
+            </View>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity 
-            style={[styles.logoutButton, { backgroundColor: '#f0f9ff' }]} 
-            onPress={handleRefreshUserData}
-            disabled={refreshing}
-            activeOpacity={0.8}
-          >
-            <Ionicons 
-              name={refreshing ? "refresh" : "refresh-outline"} 
-              size={20} 
-              color={PRIMARY} 
-            />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
-            <Ionicons name="log-out-outline" size={24} color={CTA} />
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      {/* User Info Card with enhanced data display */}
-      <View style={styles.card}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={styles.cardTitle}>Informations utilisateur</Text>
-          {refreshing && (
-            <Text style={[styles.userInfoLabel, { color: PRIMARY }]}>Actualisation...</Text>
-          )}
-        </View>
-        
-        {user ? (
-          <>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>ID:</Text>
-              <Text style={styles.userInfoValue}>{user.id}</Text>
-            </View>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Email:</Text>
-              <Text style={styles.userInfoValue}>{user.email}</Text>
-            </View>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Nom:</Text>
-              <Text style={styles.userInfoValue}>{user.nom || "Non renseigné"}</Text>
-            </View>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Prénom:</Text>
-              <Text style={styles.userInfoValue}>{user.prenom || "Non renseigné"}</Text>
-            </View>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Rôle:</Text>
-              <Text style={styles.userInfoValue}>{user.role || "Non défini"}</Text>
-            </View>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Type:</Text>
-              <Text style={styles.userInfoValue}>{user.type || "Non défini"}</Text>
-            </View>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Token:</Text>
-              <Text style={styles.userInfoValue} numberOfLines={1} ellipsizeMode="tail">
-                {token ? `${token.substring(0, 20)}...` : "Non disponible"}
-              </Text>
-            </View>
-          </>
-        ) : (
-          <View style={{ alignItems: 'center', padding: 20 }}>
-            <Text style={[styles.userInfoLabel, { textAlign: 'center' }]}>
-              Aucune donnée utilisateur disponible
-            </Text>
-            <TouchableOpacity 
-              style={[styles.checklistBtn, { marginTop: 10 }]} 
-              onPress={handleRefreshUserData}
-            >
-              <Text style={{ color: '#fff', fontSize: 12 }}>Actualiser</Text>
-            </TouchableOpacity>
+        {/* Error */}
+        {error && (
+          <View style={[styles.card, { alignItems: 'center', backgroundColor: '#fef2f2', borderColor: '#fecaca', borderWidth: 1 }]}> 
+            <Text style={{ color: CTA, fontWeight: 'bold' }}>Erreur : {error}</Text>
           </View>
         )}
-      </View>
 
-      {/* Global Progress Bar */}
-      <View style={styles.globalProgressSection}>
-        <View style={styles.progressBarLabelRow}>
-          <Text style={styles.progressBarLabel}>{percent} % complété</Text>
-        </View>
-        <View style={styles.progressBarBg}>
-          <View style={[styles.progressBarFill, { width: `${percent}%` }]} />
-        </View>
-        <Text style={styles.progressBarStepText}>Étape {currentEtape} sur {totalEtapes} validée</Text>
-      </View>
-
-      {/* Checklist dynamique / widgets de statut */}
-      <View style={styles.checklistSection}>
-        <Text style={styles.checklistSectionTitle}>Checklist de votre dossier</Text>
-        {/* Fiche de renseignement */}
-        <View style={[styles.checklistCard, { borderLeftColor: PRIMARY, borderLeftWidth: 5 }]}> 
-          <View style={styles.checklistLeft}>
-            <Ionicons name="document-text-outline" size={32} color={PRIMARY} style={{ marginRight: 14 }} />
-            <View>
-              <Text style={styles.checklistTitle}>Fiche de renseignement</Text>
-              <Text style={styles.checklistStatus}>Complétée</Text> {/* Or "À remplir" */}
-            </View>
-          </View>
-          <TouchableOpacity style={styles.checklistBtn} activeOpacity={0.8}>
-            <Ionicons name="chevron-forward-outline" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        {/* Sujet d&apos;apprentissage */}
-        <View style={[styles.checklistCard, { borderLeftColor: PRIMARY, borderLeftWidth: 5 }]}> 
-          <View style={styles.checklistLeft}>
-            <Ionicons name="business-outline" size={32} color={PRIMARY} style={{ marginRight: 14 }} />
-            <View>
-              <Text style={styles.checklistTitle}>Sujet d&apos;apprentissage</Text>
-              <Text style={styles.checklistStatus}>En attente de validation</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.checklistBtn} activeOpacity={0.8}>
-            <Ionicons name="chevron-forward-outline" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        {/* Documents déposés */}
-        <View style={[styles.checklistCard, { borderLeftColor: PRIMARY, borderLeftWidth: 5 }]}> 
-          <View style={styles.checklistLeft}>
-            <Ionicons name="attach" size={32} color={PRIMARY} style={{ marginRight: 14 }} />
-            <View>
-              <Text style={styles.checklistTitle}>Documents déposés</Text>
-              <Text style={styles.checklistStatus}>3/7 pièces validées</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.checklistBtn} activeOpacity={0.8}>
-            <Ionicons name="chevron-forward-outline" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Statut Card */}
-      <View style={styles.card}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Ionicons name="document-text-outline" size={28} color={PRIMARY} />
-          <Text style={styles.cardTitle}>Statut du dossier</Text>
-        </View>
-        <Text style={[styles.statutValue, { color: PRIMARY }]}>{statut}</Text>
-      </View>
-
-      {/* Historique Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Historique des actions</Text>
-        {actions.map((a, idx) => (
-          <View key={idx} style={styles.historiqueItem}>
-            <MaterialIcons name={a.icon} size={22} color={a.color} />
-            <View style={{ marginLeft: 10 }}>
-              <Text style={styles.historiqueAction}>{a.titre}</Text>
-              <Text style={styles.historiqueDate}>{a.date}</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {/* Floating Chatbot Button */}
-      <TouchableOpacity
-        style={styles.fabChatbot}
-        activeOpacity={0.85}
-        onPress={() => setChatbotVisible(true)}
-      >
-        <Ionicons name="chatbubble-ellipses-outline" size={28} color="#fff" />
-      </TouchableOpacity>
-
-      {/* Chatbot Modal Overlay */}
-      {chatbotVisible && (
-        <View style={styles.chatbotModalOverlay}>
-          <View style={styles.chatbotModalCard}>
-            <View style={styles.chatbotHeader}>
-              <Ionicons name="chatbubbles-outline" size={22} color={PRIMARY} style={{ marginRight: 8 }} />
-              <Text style={styles.chatbotTitle}>Aide intelligente / Chatbot</Text>
-            </View>
-            <View style={styles.chatbotFaqBlock}>
-              <View style={styles.chatbotQuestionRow}>
-                <Ionicons name="help-circle-outline" size={18} color={PRIMARY} style={{ marginRight: 6 }} />
-                <Text style={styles.chatbotQuestion}>Quels documents dois-je fournir ?</Text>
+        {/* Pièces à fournir */}
+        <View style={styles.checklistSection}>
+          <Text style={styles.checklistSectionTitle}>Pièces à fournir</Text>
+          {piecesAFournir.map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.checklistCard, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderLeftColor: PRIMARY, borderLeftWidth: 5 }]}
+              activeOpacity={0.85}
+              onPress={() => router.push(`/piece/${item.key}`)}
+            >
+              <View style={styles.checklistLeft}>
+                <Ionicons name={item.icon} size={28} color={PRIMARY} style={{ marginRight: 14 }} />
+                <View>
+                  <Text style={styles.checklistTitle}>{item.label}</Text>
+                  <Text style={{ fontSize: 13, color: getPieceStatus(item.key) === 'Déposé' ? CIRCLE_DONE : CTA, fontWeight: 'bold', marginTop: 2 }}>
+                    {getPieceStatus(item.key)}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.chatbotAnswerBlock}>
-                <Text style={styles.chatbotAnswer}>
-                  Vous devez fournir : CV, lettre de motivation, relevés de notes, diplôme(s), pièce d&apos;identité, photo d&apos;identité. D&apos;autres pièces peuvent être demandées selon votre profil.
-                </Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.chatbotCloseBtn} onPress={() => setChatbotVisible(false)}>
-              <Text style={styles.chatbotCloseBtnText}>Fermer</Text>
+              <Ionicons name="chevron-forward-outline" size={22} color={PRIMARY} />
             </TouchableOpacity>
-          </View>
+          ))}
         </View>
-      )}
-    </ScrollView>
+
+        {/* Dossier Status */}
+        <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Ionicons name="document-text-outline" size={24} color={PRIMARY} style={{ marginRight: 8 }} />
+            <Text style={styles.cardTitle}>Statut du dossier</Text>
+          </View>
+          <Text style={[styles.statutValue, { color: PRIMARY, fontSize: 18 }]}>{dossierStatus?.status ? dossierStatus.status.charAt(0).toUpperCase() + dossierStatus.status.slice(1).replace('_', ' ') : 'Non démarré'}</Text>
+          {dossierStatus?.date_creation && (
+            <Text style={{ fontSize: 12, color: TEXT_SECONDARY, marginTop: 4 }}>Créé le : {new Date(dossierStatus.date_creation).toLocaleDateString()}</Text>
+          )}
+          {dossierStatus?.date_validation && (
+            <Text style={{ fontSize: 12, color: TEXT_SECONDARY }}>Validé le : {new Date(dossierStatus.date_validation).toLocaleDateString()}</Text>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -318,13 +160,6 @@ const styles = StyleSheet.create({
     paddingTop: 32,
     paddingBottom: 12,
     backgroundColor: PASTEL_BG,
-  },
-  logoutButton: {
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: "#fef2f2",
-    borderWidth: 1,
-    borderColor: "#fecaca",
   },
   headerLeft: {
     flexDirection: "row",
@@ -524,52 +359,6 @@ const styles = StyleSheet.create({
   chatbotAnswer: {
     fontSize: 14,
     color: TEXT_PRIMARY,
-  },
-  fabChatbot: {
-    position: "absolute",
-    bottom: 32,
-    right: 24,
-    backgroundColor: PRIMARY,
-    padding: 14,
-    borderRadius: 28,
-    zIndex: 100,
-    elevation: 10,
-    shadowColor: PRIMARY,
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  chatbotModalOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    zIndex: 200,
-  },
-  chatbotModalCard: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: CARD_BG,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-  },
-  chatbotCloseBtn: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: PRIMARY,
-  },
-  chatbotCloseBtnText: {
-    fontSize: 16,
-    color: "#fff",
-    fontWeight: "bold",
   },
   userInfoRow: {
     flexDirection: "row",
